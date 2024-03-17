@@ -1,0 +1,817 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Frontend Example</title>
+    <style>
+        
+        body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh; /* Set a minimum height */
+            width: 100vw;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+        }
+
+        .canvas-container {
+            position: relative;
+        }
+
+        .canvas-container div {
+            position: relative;
+            background-repeat: no-repeat;
+        }
+
+        #canvas-container {
+            position: absolute;
+            background-repeat: no-repeat;
+            width: 100%;
+            height: 100%;
+            z-index: 0;
+            top: 0px;
+        }
+
+        #pixelCanvas {
+            position: relative;
+            left: max(300px, 20%);
+            top: 0%;
+        }
+
+
+
+        #vectors {
+            position: absolute;
+            top: 0px;
+            left: 1px;
+            width: 15%;
+            min-width: 300px;
+            z-index: 4;
+            height: 100%;
+            width: 20%;
+        }
+
+        #vector-buttons {
+            position: relative;
+            top: max(5px, 1%);;
+            left: 25%;
+            z-index: 5;
+        }
+
+        .SliderDiv {
+            position: relative;
+        }
+
+        #vectorsContainer {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            top: max(30px, 5%);
+            z-index: 2;
+        }
+
+        .vector-field {
+            margin-top: 10px;
+            margin-left: 2%;
+            display: inline-block;
+            width: 92%;
+            height: fit-content;
+            border: solid red;
+            padding: 5px;
+            border-style: dashed;
+        }
+
+        .vector-field input:not(.Slider) {
+            width: max(20%, 40px); /* Set the desired width */
+            margin-right: 3%;
+        }
+
+        .InputMatrix {
+            margin-top: 10px;
+        }
+
+
+
+        #cosmetic-divs {
+            position: absolute;
+            height: 100%;
+            width: 100%;
+            z-index: 3;
+        }
+
+        .cosmetic-div {
+            position: absolute;
+            background-color: aliceblue;
+            min-width: 300px;
+        }
+
+        #vector-big-border {
+            position: absolute;
+            top: -1%;
+            left: 0%;
+            width: 20%;
+            height: 306%;
+            z-index: 3;
+            border: solid black;
+        }
+
+        #vector-small-border {
+            position: absolute;
+            top: max(40px, 5%);
+            left: 0%;
+            width: 20%;
+            height: 300%;
+            z-index: 3;
+            border: solid black;
+        }
+
+
+
+        #canvas-div {
+            top: 0%;
+            position: absolute;
+            left: 0;
+            width: inherit;
+            height: inherit;
+        }        
+
+        #Resultvectors {
+            top: 20%;
+            left: 120%;
+            width: 300px;
+        }
+
+        .result-label {
+            width: 50px; /* Set the desired width */
+            margin-right: 15px;
+        }
+
+        #ErrorField {
+            top: 48%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            color: rgb(255, 0, 0);
+            font-size: larger;
+            font-family: 'Segoe UI';
+            font-weight: bold;
+        }
+
+        #ErrorField label{
+            text-align: center;
+            color: rgb(255, 0, 0);
+            font-size: larger;
+            font: bolder;
+        }
+
+        #AngleSlider {
+            text-align: center;
+        }
+
+
+
+        #render-button-holder {
+            top: 0;
+            left: 0;
+            transform: translate(-100%, -92%);
+            width: 35px; /* 5% of the canvas width */
+            height: 35px; /* 5% of the canvas height */
+            z-index: 3;
+        }
+
+        #render-button {
+            border: none;
+            background: none;
+        }
+
+        #render-button img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            filter: brightness(1.25);
+        }
+
+       
+        
+        .input-group {
+            margin-top: 10px;
+            margin-bottom: 10px;
+        }
+
+        #container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .pixel {
+            width: 10px;
+            height: 10px;
+            display: inline-block;
+            margin: 1px;
+        }
+
+        #vectorsContainer {
+            margin-top: 10px;
+        }
+
+        .InputMatrix {
+            margin-top: 10px;
+            margin-bottom: 10px;
+        }
+
+        .Resultvectors {
+            margin-top: 10px;
+            margin-bottom: 10px;
+        }
+
+    </style>
+</head>
+<body id="body">
+    <div id="container"></div>
+
+        <br>
+
+        <!-- <div id="input-group">
+        <label for="inputData">Enter Data:</label>
+        <input type="text" id="inputData" placeholder="Type something...">
+        <button onclick="sendPutRequest()">Send PUT Request</button>
+        </div> -->
+
+        <div id="result"> </div>
+
+        <br> <br> <br>
+
+        <div class="canvas-container" id="canvas-container">
+            <div id="cosmetic-divs">
+                <div id="vector-big-border" class="cosmetic-div"></div>
+                <div id="vector-small-border" class="cosmetic-div"></div>
+            </div>
+            <div id="vectors">
+                <div id="vector-buttons">
+                    <button onclick="addVector()">Add Vector</button>
+                    <button onclick="removeVector()">Remove Vector</button>
+                </div>
+
+                <div id="vectorsContainer">
+                    <!-- Vector fields will be added here dynamically -->
+                </div>
+            </div>
+            <!-- <div class="upper-left-corner">
+                <img src="/static/assets/canvas-border/upper_left_corner.png" alt="canvas border">
+            </div> -->
+            <div id="render-button-holder">
+                <button id="render-button" onclick="renderButtonPush()">
+                    <img src='static/assets/buttons/green_dot.png' alt="render button">
+                </button>
+            </div>
+            <!-- <div id='Resultvectors'>
+                <label for="Computed Vectors:">Computed Vectors:</label>
+            </div> -->
+            <div id='ErrorField'>
+                <label id="Error-Message"></label>
+            </div>
+            <!-- <div class="upper-side-border">
+                <img src='/static/assets/canvas-border/upper_border.png' alt="canvas border">
+            </div>
+            <div class="upper-right-corner">
+                <img src="/static/assets/canvas-border/upper_right_corner.png" alt="canvas border">
+            </div>
+            <div class="left-side-border">
+                <img src='/static/assets/canvas-border/left_border.png' alt="canvas border">
+            </div>
+            <div class="right-side-border">
+                <img src='/static/assets/canvas-border/right_border.png' alt="canvas border">
+            </div>
+            <div class="lower-left-corner">
+                <img src="/static/assets/canvas-border/lower_left_corner.png" alt="canvas border">
+            </div>
+            <div class="lower-side-border">
+                <img src='/static/assets/canvas-border/lower_border.png' alt="canvas border">
+            </div>
+            <div class="lower-right-corner">
+                <img src='/static/assets/canvas-border/lower_right_corner.png' alt="canvas border">
+            </div> -->
+            <div id="canvas-div">
+                <canvas id="pixelCanvas" width="1600" height="1600"></canvas>
+            </div>
+        </div>
+
+        <br>
+        <br>
+
+        
+
+        <br>
+
+        <!-- <div id="InputMatrix">
+            <label for="inputMatrix">Rotation Matrix:</label>
+            <br>
+            <input type="text" id="lineX1" placeholder="Line X, Element 1">
+            <input type="text" id="lineX2" placeholder="Line X, Element 2">
+            <input type="text" id="lineX3" placeholder="Line X, Element 3">
+            <br>
+            <input type="text" id="lineY1" placeholder="Line Y, Element 1">
+            <input type="text" id="lineY2" placeholder="Line Y, Element 2">
+            <input type="text" id="lineY3" placeholder="Line Y, Element 3">
+            <br>
+            <input type="text" id="lineZ1" placeholder="Line Z, Element 1">
+            <input type="text" id="lineZ2" placeholder="Line Z, Element 2">
+            <input type="text" id="lineZ3" placeholder="Line Z, Element 3">
+            <br>
+            <br>
+        </div>
+
+        <br>
+
+        <div id="AngleSlider">
+            <label id="angle-slider-label">Selected Angle: 0°</label>
+            <br>
+            <input id="angle-slider" type="range" min="1" max="360" step="0" value="0" oninput="updateSliderText('angle-slider', 'angle-slider-label', 'Selected Angle:'), sendPutRequest()">
+        </div> -->
+
+        
+
+        <br>
+        <br>
+
+    </div>
+   
+
+    <script>
+
+        var renderLists = [];
+
+        function getDisplayResolution() {
+            const resolution = [];
+
+            resolution.push(window.innerWidth); 
+            resolution.push(window.innerHeight);
+        
+            return resolution;
+        }
+
+        function determineCanvasResolution() {
+            const displayResolution = getDisplayResolution();
+            return [Math.round(displayResolution[0] - sideWidth), Math.round(displayResolution[1])];
+        }
+
+        function setCanvasSize(canvasId, resolution) {
+            const canvas = document.getElementById(canvasId);
+            canvas.width = `${resolution[0]}`
+            canvas.height = `${resolution[1]}`
+        }
+
+        function readRotationMatrix(number) {
+            const lineX = [document.getElementById(`lineX1_${number}`).value || '1.0', document.getElementById(`lineX2_${number}`).value || '0.0', document.getElementById(`lineX3_${number}`).value || '0.0'];
+            const lineY = [document.getElementById(`lineY1_${number}`).value || '0.0', document.getElementById(`lineY2_${number}`).value || '1.0', document.getElementById(`lineY3_${number}`).value || '0.0'];
+            const lineZ = [document.getElementById(`lineZ1_${number}`).value || '0.0', document.getElementById(`lineZ2_${number}`).value || '0.0', document.getElementById(`lineZ3_${number}`).value || '1.0'];
+
+            const result = [lineX, lineY, lineZ];
+
+            return result;
+        }
+
+        function createRotationMatrix(number) {
+            var matrixDiv = document.createElement("div");
+            matrixDiv.id = "InputMatrix_" + number;
+            matrixDiv.className = "InputMatrix"
+
+            var label = document.createElement("label");
+            label.id = "inputMatrixLabel";
+            label.textContent = "Rotation Matrix:";
+
+            matrixDiv.appendChild(label);
+            matrixDiv.appendChild(document.createElement("br"));
+
+            // Create input elements for each line and element
+            var lines = ['X', 'Y', 'Z'];
+            for (var i = 0; i < lines.length; i++) {
+                for (var j = 1; j <= 3; j++) {
+                var input = document.createElement("input");
+                input.type = "text";
+                input.id = "line" + lines[i] + j + "_" + number;
+                input.placeholder = "Line " + lines[i] + ", Element " + j;
+                input.className = "matrix-input";
+
+                matrixDiv.appendChild(input);
+                }
+
+                matrixDiv.appendChild(document.createElement("br"));
+            }
+
+            matrixDiv.appendChild(document.createElement("br"));
+
+            return matrixDiv;
+        }
+
+        function createAngleSlider(number) {
+            var sliderDiv = document.createElement("div");
+            sliderDiv.id = `AngleSliderDiv_${number}`;
+            sliderDiv.className = "SliderDiv";
+
+            var label = document.createElement("label");
+            label.id = `AngleSliderLabel_${number}`;
+            label.textContent = "Selected Angle: 0°";
+
+            var slider = document.createElement("input");
+            slider.className = "Slider"
+            slider.type = "range";
+            slider.id = `AngleSlider_${number}`;
+            slider.min = "0";
+            slider.max = "360";
+            slider.step = "1";
+            slider.width = "120px"
+            slider.oninput = function() {
+                updateSliderText(`AngleSlider_${number}`, `AngleSliderLabel_${number}`, 'Selected Angle:');
+                manipulateMatrixInputTextBrackets(document.getElementById(`AngleSlider_${number}`).value || "0", `${number}`)
+                sendPutRequest(number);
+            };
+
+            sliderDiv.appendChild(label);
+            sliderDiv.appendChild(document.createElement("br"));
+            sliderDiv.appendChild(slider);
+
+            return sliderDiv;
+        }
+
+        function updateSliderText(sliderId, LabelId, LabelText) {
+            const slider = document.getElementById(sliderId);
+            const sliderLabel = document.getElementById(LabelId);
+            
+            sliderLabel.innerText = `${LabelText} ${slider.value}°`
+        }
+
+        let vectorCounter = -1; // Counter to keep track of the number of vectors
+
+        function addVector() {
+            if (vectorCounter < 2) {
+                const vectorsContainer = document.getElementById("vectorsContainer");
+                vectorsContainer.style.border = "bold"
+
+                // Create HTML elements for X, Y, Z fields
+                const vectorDiv = document.createElement("div");
+                vectorDiv.classList.add("vector-field");
+                vectorDiv.id = `vector${vectorCounter}`;
+                //vectorDiv.className = "vector";
+
+                const Name = document.createElement("label");
+                Name.textContent = `Vector ${vectorCounter + 2}:`;
+
+                const lineBreak = document.createElement("br");
+
+                const labelX = document.createElement("label");
+                labelX.textContent = `X`;
+
+                const inputX = document.createElement("input");
+                inputX.type = "text";
+                inputX.id = `vector${vectorCounter}X`;
+                inputX.placeholder = "Enter X value";
+
+                const labelY = document.createElement("label");
+                labelY.textContent = "Y";
+
+                const inputY = document.createElement("input");
+                inputY.type = "text";
+                inputY.id = `vector${vectorCounter}Y`;
+                inputY.placeholder = "Enter Y value";
+
+                const labelZ = document.createElement("label");
+                labelZ.textContent = "Z";
+
+                const inputZ = document.createElement("input");
+                inputZ.type = "text";
+                inputZ.id = `vector${vectorCounter}Z`;
+                inputZ.placeholder = "Enter Z value";
+
+                slider = createAngleSlider(vectorCounter);
+                slider.top = "70px"
+
+                // Append elements to the container
+                vectorsContainer.appendChild(vectorDiv);
+                vectorDiv.appendChild(Name);
+                vectorDiv.appendChild(lineBreak);
+                vectorDiv.appendChild(labelX);
+                vectorDiv.appendChild(inputX);
+                vectorDiv.appendChild(labelY);
+                vectorDiv.appendChild(inputY);
+                vectorDiv.appendChild(labelZ);
+                vectorDiv.appendChild(inputZ);
+                vectorDiv.appendChild(createRotationMatrix(vectorCounter));
+                vectorDiv.appendChild(slider);
+
+                vectorCounter++;
+                const topPosition = vectorCounter * 30; // Adjust this value based on your layout
+                vectorDiv.style.top = `${topPosition}px`;
+            }
+        }
+
+        function writeResultVectors(vectorCounter, resultArray){
+            const resultContainer = document.getElementById("Resultvectors");
+            while (resultContainer.firstChild) {
+                resultContainer.removeChild(resultContainer.firstChild);
+            }
+            const strartingLabel = document.createElement("label");
+            strartingLabel.innerText = "computed Vectors:"
+            resultContainer.appendChild(strartingLabel);
+
+            for (let i = 0; i < vectorCounter + 1; i++) {
+                const resultLabelDiv = document.createElement("div");
+                const axisArray = ["X", "Y", "Z"];
+                const axisArraySmall = ["x", "y", "z"];
+                const vectorTitle = document.createElement("label");
+                vectorTitle.innerText = `Vector ${i}:`;
+                resultLabelDiv.appendChild(vectorTitle);
+                resultLabelDiv.appendChild(document.createElement("br"));
+                for (let t = 0; t < 3; t++){
+                    const resultLabel = document.createElement("label");
+                    const resultLabelContainer = document.createElement("div");
+                    resultLabel.innerText = `${axisArray[t]}: ${resultArray[i][axisArraySmall[t]]}`;
+                    resultLabelContainer.classList.add("result-label");
+                    resultLabelContainer.style.left = `${80 * t}px`;
+                    resultLabelContainer.appendChild(resultLabel);
+                    resultLabelDiv.appendChild(resultLabelContainer);
+                }
+                resultLabelDiv.style.top = `${80 * i + 30}px`;
+                resultContainer.appendChild(resultLabelDiv);
+            }
+        }
+
+        function removeVector() {
+            if (vectorCounter > -1) {
+                const vectorsContainer = document.getElementById("vectorsContainer");
+                const lastVectorDiv = document.getElementById(`vector${vectorCounter - 1}`);
+
+                vectorsContainer.removeChild(lastVectorDiv);
+                vectorCounter--;
+            }
+        }
+
+        function renderButtonPush() {
+            const button = document.getElementById("render-button");
+            const buttonImage = button.querySelector('img');
+
+            buttonImage.src = "/static/assets/buttons/dark_green_dot.png";
+
+            button.style.filter = "brightness(0.8)";
+
+            sendPutRequest();
+        }
+
+        function renderButtonRelease() {
+            const button = document.getElementById("render-button");
+            const buttonImage = button.querySelector('img');
+
+            buttonImage.src = "/static/assets/buttons/green_dot.png";
+
+            button.style.filter = "brightness(1.25)";
+        }
+
+        function manipulateInputTextBrackets(insertText, elementId) {
+            console.log("trying to change value of field");
+
+            const element = document.getElementById(elementId);
+            const inputText = element.value; 
+            var result = "";
+
+            var inBrackets = false
+            for (var i = 0; i < inputText.length; i++) {
+                if (inBrackets) {
+                    if (inputText[i] === ")" || i === inputText.length - 1) {
+                        result += `${insertText})`
+                        inBrackets = false;
+                    }
+                } else {
+                    if (inputText[i] === "(") {
+                        result += `(`
+                        inBrackets = true;
+                    } else {
+                        result += `${inputText[i]}`
+                    }
+                }
+            }
+
+            element.value = result;
+        }
+
+        function manipulateMatrixInputTextBrackets(insertText, matrixNumber) {
+            console.log("trying to change Matrix values");
+            
+            const lineX = [document.getElementById(`lineX1_${matrixNumber}`), document.getElementById(`lineX2_${matrixNumber}`), document.getElementById(`lineX3_${matrixNumber}`)];
+            const lineY = [document.getElementById(`lineY1_${matrixNumber}`), document.getElementById(`lineY2_${matrixNumber}`), document.getElementById(`lineY3_${matrixNumber}`)];
+            const lineZ = [document.getElementById(`lineZ1_${matrixNumber}`), document.getElementById(`lineZ2_${matrixNumber}`), document.getElementById(`lineZ3_${matrixNumber}`)];
+
+            for (var i = 0; i < 3; i++) {
+                console.log("iterating");
+                manipulateInputTextBrackets(`${insertText}°`, lineX[i].id);
+                manipulateInputTextBrackets(`${insertText}°`, lineY[i].id);
+                manipulateInputTextBrackets(`${insertText}°`, lineZ[i].id);
+            }
+        }
+
+        class RenderedVector {
+            constructor(layer, render, number) {
+                this.layer = layer;
+                this.render = render;
+                this.number = number;
+            }
+        }
+
+        async function sendPutRequest(number) {
+            const url = 'http://therotationrenderer.mywire.org/api/pull-request';
+            const title = "Client calculation Request";
+            const description = "Package containing data ment to be calcualted and renderd by the server";
+
+            // Get rotation matrix elements
+            // const lineX = [document.getElementById('lineX1').value || '1.0', document.getElementById('lineX2').value || '0.0', document.getElementById('lineX3').value || '0.0'];
+            // const lineY = [document.getElementById('lineY1').value || '0.0', document.getElementById('lineY2').value || '1.0', document.getElementById('lineY3').value || '0.0'];
+            // const lineZ = [document.getElementById('lineZ1').value || '0.0', document.getElementById('lineZ2').value || '0.0', document.getElementById('lineZ3').value || '1.0'];
+            // const matrix = {
+            //     line_x: lineX,
+            //     line_y: lineY,
+            //     line_z: lineZ
+            // }
+            // console.log(`Rotation Matrix: \n${lineX} \n${lineY} \n${lineZ}`);
+
+
+            // // Get theta
+            // const theta = parseFloat(document.getElementById('angle-slider').value);
+
+            const error = "";
+            const resolution = determineCanvasResolution();
+
+            // Get all Vectors and Rotatuin Matrixes
+            const vectors = [];
+            const matrixes = [];
+            const angels = [];
+            
+            const vectorX = parseFloat(document.getElementById(`vector${number}X`).value || '1.0');
+            const vectorY = parseFloat(document.getElementById(`vector${number}Y`).value || '1.0');
+            const vectorZ = parseFloat(document.getElementById(`vector${number}Z`).value || '1.0');
+            vectors.push({ x: vectorX, y: vectorY, z: vectorZ });
+            const matrixArray = readRotationMatrix(number);
+            const matrix = {
+                line_x: matrixArray[0],
+                line_y: matrixArray[1],
+                line_z: matrixArray[2]
+            }
+            matrixes.push(matrix);
+
+            const theta = parseFloat(document.getElementById(`AngleSlider_${number}`).value || "0");
+            angels.push(theta);
+                
+            
+            const data = {
+                title,
+                description,
+                resolution,
+                matrix: matrixes,
+                theta: angels,
+                vectors,
+                layers: [],
+                color_list: [],  // Empty array for now, to be populated by the server
+                error
+            };
+            try {
+                console.log(`sending data: ${JSON.stringify(data)}`)
+                const response = await fetch(url, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(data),
+                });
+
+                if (response.ok) {
+                    const result = await response.json();
+                    if (result.error != "No Error detected") {
+                        console.error(`Error occured during server calculations: ${result.error}`);
+                        console.log('Drawing empty canvas');
+                        console.log(result);
+                        drawPixelCube([]);
+                        document.getElementById('ErrorField').innerText = `An Error Occured:\n${result.error}\nTrying some different inputs might fix it\nIf you dont understand its meaning you are welcom to ask me`;
+                        renderButtonRelease();
+                    } else {
+                                                
+                        renderLists.push(new RenderedVector(result.layers[0], result.color_list, number));
+                        sortRenderList(renderLists);
+                        renderLists.reverse();
+                        console.log('Color Lists:', renderLists);
+                        
+                        // document.getElementById('ErrorField').innerText = "";
+                        console.log('PUT request successful with result: ');
+                        console.log(result);
+                        console.log('Color List:', result.color_list);
+                        // document.getElementById('result').innerText = result.title;
+                        drawPixelCube(result.color_list, "white");
+                        renderButtonRelease();
+                        // document.getElementById('Resultvectors').innerText = "Computed Vectors: \n\n"
+                        // writeResultVectors(vectorCounter, result.vectors)
+                    }
+                    
+                } else {
+                    console.error('PUT request failed:', response.status, response.statusText);
+                }
+            } catch (error) {
+                console.error('Error during PUT request:', error);
+            }
+        }
+
+        function sortRenderList(list) {
+            // sorts form small to big
+            var resultList = [list];
+            var bufferList = []
+            
+            while (resultList.length != list.length) {
+                for (var i = 0; i < resultList.length; i++){
+                    if (resultList[i].length == 0){
+                        continue;
+                    }
+                    console.log(resultList[i][0].layer);
+                    const pivot = (resultList[i][0].layer + resultList[i][resultList[i].length - 1].layer + resultList[i][Math.round(resultList[i].length / 2) - 1].layer) / 3;
+                    for (var j = 0; j < resultList[i].length; j++) {
+                        var smaller = [];
+                        var larger = [];
+                        if (resultList[i][j].layer <= pivot) {
+                            smaller.push(resultList[i][j]);
+                        }
+                        else {
+                            larger.push(resultList[i][j].layer);
+                        }
+                        if (smaller.length > 0) {
+                            bufferList.push(smaller);
+                        }
+                        if (larger.length > 0) {
+                            bufferList.push(larger);
+                        }
+                    }
+                }
+                console.log(resultList.length);
+                console.log(resultList);
+                console.log(list.length);
+                console.log(list);
+                resultList = bufferList;
+                bufferList = [];
+            }
+
+            return resultList;
+        }
+
+
+        async function drawPixelCube(colors, backgroundColor) {
+
+            console.log('trying to draw');
+
+            const PixelCube = document.getElementById("pixelCanvas");
+            const CanvasContext = PixelCube.getContext("2d");
+
+            CanvasContext.clearRect(0, 0, pixelCanvas.width, pixelCanvas.height);
+
+            const pixelSize = 1;
+            
+            for (let i = 0; i < colors.length; i++) {
+                // Convert the text content of the list item to a number and add it to the sum
+                var reachedWith = 0;
+                if (!colors[i].length) {
+                    CanvasContext.fillStyle = CanvasContext.fillStyle = backgroundColor;
+                    CanvasContext.fillRect(reachedWith * pixelSize, i * pixelSize, pixelCanvas.width, pixelSize);
+                }
+                for (let j = 0; j < colors[i].length; j++){
+                    CanvasContext.fillStyle = CanvasContext.fillStyle = backgroundColor;
+                    CanvasContext.fillRect(reachedWith * pixelSize, i * pixelSize, colors[i][j].x - reachedWith, pixelSize);
+                    reachedWith = colors[i][j].x;
+                    CanvasContext.fillStyle = CanvasContext.fillStyle = `rgb(${colors[i][j].color.red}, ${colors[i][j].color.green}, ${colors[i][j].color.blue})`;;
+                    CanvasContext.fillRect(reachedWith, i * pixelSize, colors[i][j].occurence_length, pixelSize);
+                    reachedWith += colors[i][j].occurence_length;
+                }
+                if (reachedWith < pixelCanvas.width - 1) {
+                    CanvasContext.fillStyle = CanvasContext.fillStyle = backgroundColor;
+                    CanvasContext.fillRect(reachedWith * pixelSize, i * pixelSize, pixelCanvas.width - reachedWith, pixelSize);
+                }
+            }
+
+            // for (let i=0; i < pixelCanvas.height / pixelSize; i++){
+            //     for (let j=0; j < pixelCanvas.width / pixelSize; j++){
+            //         CanvasContext.fillStyle = colors[j + 1];
+            //         CanvasContext.fillRect(j * pixelSize, i * pixelSize, pixelSize, pixelSize);
+            //     }
+            // }
+        }
+
+        // If you want to automatically call the function every second
+        // setInterval(sendPutRequest, 10000);
+        var sideWidth = getDisplayResolution()[0] * 0.2;
+        if (sideWidth < 300) {
+            sideWidth = 300;
+        }
+        window.scrollTo(0, 0);
+        setCanvasSize("pixelCanvas", determineCanvasResolution());
+        setInterval(setCanvasSize("pixelCanvas", determineCanvasResolution()), 100);
+        addVector();
+    </script>
+</body>
+</html>

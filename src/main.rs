@@ -118,11 +118,18 @@ async fn index() -> impl Responder {
     HttpResponse::Ok().body(fs::read_to_string("static/index.html").await.unwrap())
 }
 
+async fn index2D() -> impl Responder {
+    println!("Got request, poggies");
+    HttpResponse::Ok().body(fs::read_to_string("static/index2D.html").await.unwrap())
+}
+
 async fn pull_request(info: web::Json<PullReqeustPackage>) -> impl Responder {
     println!("\nReceived Pull Request: {:?} \ndescription: {}", info.title, info.description);
     // let parent = SquareSurface::new(Vector3D::new(0.0, 0.0, 0.0), Vector3D::new(0.0, 0.0, 0.0), Vector3D::new(0.0, 0.0, 0.0), 0.0, 0.0, Color::new(0, 0, 0), & mut vec!());
     let string_matrix = info.matrix.clone();
     let resolution = info.resolution.clone();
+    let screen_center = info.camera_position.clone();
+    let focus_point = info.focus_point.clone();
     let (pixel_sender, pixel_receiver) = mpsc::channel();
     let (vector_sender, vector_receiver) = mpsc::channel();
     let (error_sender, error_receiver) = mpsc::channel();
@@ -135,12 +142,15 @@ async fn pull_request(info: web::Json<PullReqeustPackage>) -> impl Responder {
         let resolution_x: u64 = resolution.0;
         let resolution_y: u64 = resolution.1;
 
+        let vector_colors: Vec<Color> = info.vector_colors.clone();
+
         // ratio is width / height
 
         let aspect_ratio: f32 = resolution_x as f32 / resolution_y as f32;
 
-        let screen_center = Vector3D::new(5.0, 3.0 , 5.0);
-        let focus_point = Vector3D::new(0.0, 2.0, 0.0);
+        // allready defined before thread
+        // let screen_center = Vector3D::new(5.0, 3.0 , 5.0);
+        // let focus_point = Vector3D::new(0.0, 2.0, 0.0);
 
 
         let screen_width_vector = Vector3D::new(1.0, 0.0, -1.0).normalize();
@@ -180,7 +190,7 @@ async fn pull_request(info: web::Json<PullReqeustPackage>) -> impl Responder {
             println!("\ncreating matrix \n");
             let rotation_matrix = match string_matrix[index].clone().turn_into_rotation_matrix() {
                 Ok(a) => a,
-                Err(err) => panic!("{}",err) 
+                Err(err) => {error_sender.send(err).unwrap(); panic!()}
             };
             let mut rotated_vector = rotation_matrix.multiply(vector.clone(), &info.theta[index]);
             let layer = (rotated_vector.clone().normalize() - camera_position).occurence_length();
@@ -197,16 +207,16 @@ async fn pull_request(info: web::Json<PullReqeustPackage>) -> impl Responder {
                 lines_to_render.push(Line::new(
                     rotated_vector.clone(), 
                     rotated_vector.clone() + arrow_parts.0,
-                    Color::new(0, 255, 0)));
+                    vector_colors[index]));
                 lines_to_render.push(Line::new(
                     rotated_vector.clone(), 
                     rotated_vector.clone() + arrow_parts.1,
-                    Color::new(0, 255, 0)));
+                    vector_colors[index]));
             }
             lines_to_render.push(Line::new(
                 Vector3D::new(0.0, 0.0, 0.0), 
                 rotated_vector.clone(),
-                Color::new(0, 255, 0)));
+                vector_colors[index]));
         }
 
         // Adding 3 coordinate axises
@@ -336,7 +346,10 @@ async fn pull_request(info: web::Json<PullReqeustPackage>) -> impl Responder {
         matrix: vec!(StringRotationMatrix{line_x: [String::default(), String::default(), String::default()], line_y:[String::default(), String::default(), String::default()], line_z:[String::default(), String::default(), String::default()]}),
         theta: vec!(0.0),
         vectors,
+        vector_colors: vec!(),
         layers,
+        camera_position: Vector3D::new(0.0, 0.0, 0.0),
+        focus_point: Vector3D::new(0.0, 0.0, 0.0),
         color_list,
         error
     })
@@ -359,6 +372,8 @@ async fn main() -> std::io::Result<()> {
                 .max_age(3600))
             .service(Files::new("/static", "./static").show_files_listing())
             .service(web::resource("/").to(index))
+            .service(web::resource("/3D").to(index))
+            .service(web::resource("/2D").to(index2D))
             .service(web::resource("/api/pull-request").route(web::put().to(pull_request)))
     })
     .bind("0.0.0.0:80")?

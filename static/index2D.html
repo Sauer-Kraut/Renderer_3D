@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>3D Rotation Renderer</title>
+    <title>2D Rotation Renderer</title>
     <link rel="icon" href="static\assets\icons\webapp icon.png" type="image/png">
     <style>
         
@@ -87,7 +87,7 @@
         }
 
         .vector-field input:not(.Slider) {
-            width: max(20%, 40px); /* Set the desired width */
+            width: max(35%, 40px); /* Set the desired width */
             margin-right: 3%;
         }
 
@@ -348,9 +348,9 @@
         }
 
         function readRotationMatrix(number) {
-            const lineX = [document.getElementById(`lineX1_${number}`).value || '1.0', document.getElementById(`lineX2_${number}`).value || '0.0', document.getElementById(`lineX3_${number}`).value || '0.0'];
-            const lineY = [document.getElementById(`lineY1_${number}`).value || '0.0', document.getElementById(`lineY2_${number}`).value || '1.0', document.getElementById(`lineY3_${number}`).value || '0.0'];
-            const lineZ = [document.getElementById(`lineZ1_${number}`).value || '0.0', document.getElementById(`lineZ2_${number}`).value || '0.0', document.getElementById(`lineZ3_${number}`).value || '1.0'];
+            const lineX = [document.getElementById(`lineX1_${number}`).value || '1.0', document.getElementById(`lineX2_${number}`).value || '0.0', '0.0'];
+            const lineY = [document.getElementById(`lineY1_${number}`).value || '0.0', document.getElementById(`lineY2_${number}`).value || '1.0', '0.0'];
+            const lineZ = [                                                     '0.0',                                                      '0.0', '0.1'];
 
             const result = [lineX, lineY, lineZ];
 
@@ -370,9 +370,9 @@
             matrixDiv.appendChild(document.createElement("br"));
 
             // Create input elements for each line and element
-            var lines = ['X', 'Y', 'Z'];
+            var lines = ['X', 'Y'];
             for (var i = 0; i < lines.length; i++) {
-                for (var j = 1; j <= 3; j++) {
+                for (var j = 1; j <= 2; j++) {
                 var input = document.createElement("input");
                 input.type = "text";
                 input.id = "line" + lines[i] + j + "_" + number;
@@ -385,7 +385,7 @@
                 }
 
                 if (i == 0 && j == 1) {
-                    input.value = "sin()";
+                    input.value = "cos()";
                 }
 
                 matrixDiv.appendChild(input);
@@ -470,6 +470,7 @@
         function addVector() {
             if (vectorCounter < 2) {
                 const vectorsContainer = document.getElementById("vectorsContainer");
+                const currentVectorCounter = vectorCounter;
                 vectorsContainer.style.border = "bold"
 
                 // Create HTML elements for X, Y, Z fields
@@ -490,7 +491,7 @@
                 inputX.type = "text";
                 inputX.id = `vector${vectorCounter}X`;
                 inputX.placeholder = "Enter X value";
-                inputX.value = Math.round(Math.random() * 4) + 1;
+                inputX.value = Math.round((Math.random() -0.5) * 8) + 1;
                 inputX.oninput = function() {
                     sendPutRequest(currentVectorCounter);
                 }
@@ -502,20 +503,8 @@
                 inputY.type = "text";
                 inputY.id = `vector${vectorCounter}Y`;
                 inputY.placeholder = "Enter Y value";
-                inputY.value = Math.round(Math.random() * 4) + 1;
+                inputY.value = Math.round((Math.random() -0.5) * 8) + 1;
                 inputY.oninput = function() {
-                    sendPutRequest(currentVectorCounter);
-                }
-
-                const labelZ = document.createElement("label");
-                labelZ.textContent = "Z";
-
-                const inputZ = document.createElement("input");
-                inputZ.type = "text";
-                inputZ.id = `vector${vectorCounter}Z`;
-                inputZ.placeholder = "Enter Z value";
-                inputZ.value = Math.round(Math.random() * 4) + 1;
-                inputZ.oninput = function() {
                     sendPutRequest(currentVectorCounter);
                 }
 
@@ -530,8 +519,6 @@
                 vectorDiv.appendChild(inputX);
                 vectorDiv.appendChild(labelY);
                 vectorDiv.appendChild(inputY);
-                vectorDiv.appendChild(labelZ);
-                vectorDiv.appendChild(inputZ);
                 vectorDiv.appendChild(createRotationMatrix(vectorCounter));
                 vectorDiv.appendChild(slider);
 
@@ -644,15 +631,13 @@
         function manipulateMatrixInputTextBrackets(insertText, matrixNumber) {
             console.log("trying to change Matrix values");
             
-            const lineX = [document.getElementById(`lineX1_${matrixNumber}`), document.getElementById(`lineX2_${matrixNumber}`), document.getElementById(`lineX3_${matrixNumber}`)];
-            const lineY = [document.getElementById(`lineY1_${matrixNumber}`), document.getElementById(`lineY2_${matrixNumber}`), document.getElementById(`lineY3_${matrixNumber}`)];
-            const lineZ = [document.getElementById(`lineZ1_${matrixNumber}`), document.getElementById(`lineZ2_${matrixNumber}`), document.getElementById(`lineZ3_${matrixNumber}`)];
+            const lineX = [document.getElementById(`lineX1_${matrixNumber}`), document.getElementById(`lineX2_${matrixNumber}`)];
+            const lineY = [document.getElementById(`lineY1_${matrixNumber}`), document.getElementById(`lineY2_${matrixNumber}`)];
 
-            for (var i = 0; i < 3; i++) {
+            for (var i = 0; i < 2; i++) {
                 console.log("iterating");
                 manipulateInputTextBrackets(`${insertText}°`, lineX[i].id);
                 manipulateInputTextBrackets(`${insertText}°`, lineY[i].id);
-                manipulateInputTextBrackets(`${insertText}°`, lineZ[i].id);
             }
         }
 
@@ -714,26 +699,31 @@
                 blue: 0
             }
 
-            const cameraPosition = {x: 5.0, y: 3.0, z: 5.0}
+            const cameraPosition = {x: 0.000001, y: 0.0000001, z: 5.0}
 
-            const focusPoint = {x: 0.0,y: 2.0, z: 0.0}
+            const focusPoint = { x: 0.0, y: 0.0, z: 0.0 }
 
             if (number == "X" || number == "x") {
-                vectorX = parseFloat('10.0');
+                vectorX = parseFloat('12.0');
+            }
+
+            else if (number == "-X" || number == "-x") {
+                vectorX = parseFloat('-12.0');
             } 
 
             else if (number == "Y" || number == "y") {
-                vectorY = parseFloat('10.0');
+                vectorY = parseFloat('12.0');
             } 
 
-            else if (number == "Z" || number == "z") {
-                vectorZ = parseFloat('10.0');
-            } 
+            else if (number == "-Y" || number == "-y") {
+                vectorY = parseFloat('-12.0');
+            }
 
             else {
                 vectorX = parseFloat(document.getElementById(`vector${number}X`).value || '1.0');
+                vectorX *= -1; //this change is made so positiv values are right of the y-axis
                 vectorY = parseFloat(document.getElementById(`vector${number}Y`).value || '1.0');
-                vectorZ = parseFloat(document.getElementById(`vector${number}Z`).value || '1.0');
+                vectorZ = parseFloat('0.01');
 
                 matrixArray = readRotationMatrix(number);
                 
@@ -967,8 +957,9 @@
         addVector();
 
         sendPutRequest("X");
+        sendPutRequest("-X");
         sendPutRequest("Y");
-        sendPutRequest("Z");
+        sendPutRequest("-Y");
         sendPutRequest(-1);
     </script>
 </body>

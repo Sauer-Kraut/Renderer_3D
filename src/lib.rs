@@ -690,13 +690,13 @@ impl OptimisedScreenPoint {
                 if !(screen_point_list[0].y > screen_height){
                     for empty_row_index in 0..(screen_point_list[0].y - current_point.y - 1){
                         // println!("current screen point y: {}, first list element y: {}, so we are filling {:?} rows", current_point.y, screen_point_list[0].y, 0..(screen_point_list[0].y - current_point.y - 1));
-                        output.push(vec!(OptimisedScreenPoint::new(background_color, screen_width as u32, current_point.y as u32 + empty_row_index as u32)))
+                        // output.push(vec!(OptimisedScreenPoint::new(background_color, screen_width as u32, current_point.y as u32 + empty_row_index as u32)))
                     }
                 }
                 if output.is_empty() && screen_point_list[0].y != 1{
                     for empty_row_index in 0..(screen_point_list[0].y - current_point.y){
                         // println!("current screen point y: {}, first list element y: {}, so we are filling {:?} rows", current_point.y, screen_point_list[0].y, 0..(screen_point_list[0].y - current_point.y));
-                        output.push(vec!(OptimisedScreenPoint::new(background_color, screen_width as u32, current_point.y as u32 + empty_row_index as u32)))
+                        // output.push(vec!(OptimisedScreenPoint::new(background_color, screen_width as u32, current_point.y as u32 + empty_row_index as u32)))
                     }
                 }
                 let mut optimized_line = vec!();
@@ -786,7 +786,10 @@ pub struct PullReqeustPackage {
     pub matrix: Vec<StringRotationMatrix>,
     pub theta: Vec<f32>,
     pub vectors: Vec<Vector3D>,
+    pub vector_colors: Vec<Color>,
     pub layers: Vec<f32>,
+    pub camera_position: Vector3D,
+    pub focus_point: Vector3D,
     pub color_list: Vec<Vec<OptimisedScreenPoint>>,
     pub error: String
 }
@@ -848,7 +851,7 @@ impl StringRotationMatrix{
             else {
                 match cleaned_key.parse::<f32>() {
                     Ok(value) => parsed_line_x[index] = Arc::new(Mutex::new((move |_x: f32, _theta:f32| value))),
-                    Err(_) => return Err(format!("unable to translate &str into operation, key: {} is not contained in hashmap or parsable", cleaned_key.as_str()))
+                    Err(_) => return Err(format!("unable to translate &str into operation, key: '{}' is neither contained in hashmap nor parsable", cleaned_key.as_str()))
             } 
             }
         }
@@ -866,7 +869,7 @@ impl StringRotationMatrix{
             else {
                 match cleaned_key.parse::<f32>() {
                     Ok(value) => parsed_line_y[index] = Arc::new(Mutex::new((move |_x: f32, _theta:f32| value))),
-                    Err(_) => return Err(format!("unable to translate &str into operation, key: {} is not contained in hashmap or parsable", cleaned_key.as_str()))
+                    Err(_) => return Err(format!("unable to translate &str into operation, key: '{}' is neither contained in hashmap nor parsable", cleaned_key.as_str()))
             } 
             }
         }
@@ -884,7 +887,7 @@ impl StringRotationMatrix{
             else {
                 match cleaned_key.parse::<f32>() {
                     Ok(value) => parsed_line_z[index] = Arc::new(Mutex::new((move |_x: f32, _theta:f32| value))),
-                    Err(_) => return Err(format!("unable to translate &str into operation, key: {} is not contained in hashmap or parsable", cleaned_key.as_str()))
+                    Err(_) => return Err(format!("unable to translate &str into operation, key: '{}' is neither contained in hashmap nor parsable", cleaned_key.as_str()))
             } 
             }
         }

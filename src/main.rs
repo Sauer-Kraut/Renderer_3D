@@ -1,15 +1,15 @@
 mod lib;
 use lib::*;
-use async_std::{fs, process};
+use async_std::fs;
 use actix_cors::Cors;
 use actix_web::{web, App, HttpResponse, HttpServer, Responder};
 use serde::{Deserialize, Serialize};
 use actix_web::http;
 use core::panic;
-use std::thread::{self, *};
-use std::sync::{Arc, Mutex};
+use std::thread::{self};
 use std::sync::mpsc;
 use actix_files::Files;
+use colored::Colorize;
 
 // fn main() {
 //     println!("{:?}", Vector3D::new(2.0, 4.0, 2.0));
@@ -114,17 +114,17 @@ struct PullRequest {
 }
 
 async fn index() -> impl Responder {
-    println!("Got request, poggies");
+    println!("\nGot request, poggies");
     HttpResponse::Ok().body(fs::read_to_string("static/index.html").await.unwrap())
 }
 
-async fn index2D() -> impl Responder {
+async fn index2d() -> impl Responder {
     println!("Got request, poggies");
     HttpResponse::Ok().body(fs::read_to_string("static/index2D.html").await.unwrap())
 }
 
 async fn pull_request(info: web::Json<PullReqeustPackage>) -> impl Responder {
-    println!("\nReceived Pull Request: {:?} \ndescription: {}", info.title, info.description);
+    println!("\n\n\n\n{} {} \ndescription: {}", "Received Pull Request:".bold().cyan(), info.title.bold().italic().cyan(), info.description.italic());
     // let parent = SquareSurface::new(Vector3D::new(0.0, 0.0, 0.0), Vector3D::new(0.0, 0.0, 0.0), Vector3D::new(0.0, 0.0, 0.0), 0.0, 0.0, Color::new(0, 0, 0), & mut vec!());
     let string_matrix = info.matrix.clone();
     let resolution = info.resolution.clone();
@@ -153,15 +153,15 @@ async fn pull_request(info: web::Json<PullReqeustPackage>) -> impl Responder {
         // let focus_point = Vector3D::new(0.0, 2.0, 0.0);
 
 
-        let screen_width_vector = Vector3D::new(1.0, 0.0, -1.0).normalize();
-        let screen_height_vector = Vector3D::new(0.0, 1.0, 0.0).normalize();
+        // let screen_width_vector = Vector3D::new(1.0, 0.0, -1.0).normalize();
+        // let screen_height_vector = Vector3D::new(0.0, 1.0, 0.0).normalize();
 
         let screen_width = 10.0;
-        let screen_height = screen_width / aspect_ratio;
+        // let screen_height = screen_width / aspect_ratio;
 
         // calculating Lower left corner of screen (origin)
 
-        let screen_origin = screen_center - screen_height_vector * (screen_height / 2.0) - screen_width_vector * (screen_width / 2.0);
+        // let screen_origin = screen_center - screen_height_vector * (screen_height / 2.0) - screen_width_vector * (screen_width / 2.0);
 
         //let mut screen = SquareSurface::new(screen_origin, screen_width_vector, screen_height_vector, screen_width, screen_height, Color::new(0, 0, 0), &mut lines_to_render);
         let screen = match screen_center.turn_into_screen(focus_point, aspect_ratio, screen_width){
@@ -169,25 +169,25 @@ async fn pull_request(info: web::Json<PullReqeustPackage>) -> impl Responder {
             Err(err) => {error_sender.send(err).unwrap(); panic!()},
         };
 
-        println!("\nsettig up screen data \n");
+        // println!("\nsettig up screen data");
 
-        let screen_plane = screen.get_plane();
+        // let screen_plane = screen.get_plane();
         let camera_position = screen_center + (screen_center.clone() - focus_point).normalize() * 4.0;
 
-        println!("\n\nstarting to render \n");
+        // println!("\nstarting to render");
 
         // !!!!!!!!!!!!!!!!!!!!!!!!!!
         // ADD DECENT ERROR HANDELING
         // !!!!!!!!!!!!!!!!!!!!!!!!!!
 
 
-        println!("\nrotating vectors \n");
+        println!("rotating vectors");
         let mut rotated_vectors = vec!();
         let mut layers = vec!();
 
         for (index, vector) in info.vectors.iter().enumerate() {
-            println!("rotating vector");
-            println!("\ncreating matrix \n");
+            // println!("rotating vector");
+            // println!("creating matrix");
             let rotation_matrix = match string_matrix[index].clone().turn_into_rotation_matrix() {
                 Ok(a) => a,
                 Err(err) => {error_sender.send(err).unwrap(); panic!()}
@@ -221,7 +221,7 @@ async fn pull_request(info: web::Json<PullReqeustPackage>) -> impl Responder {
 
         // Adding 3 coordinate axises
 
-        let mut coordinate_lines: Vec<Line> = vec!();
+        // let mut coordinate_lines: Vec<Line> = vec!();
 
         // coordinate_lines.push(Line::new(
         //     Vector3D::origin(),
@@ -239,12 +239,12 @@ async fn pull_request(info: web::Json<PullReqeustPackage>) -> impl Responder {
         //     Color::black()
         // ));
 
-        println!("sending rotated vector");
-        vector_sender.send(rotated_vectors).unwrap_or_else(|_| panic!("AAAAAAAAA, main thread should always be able to receive"));
+        // println!("sending rotated vector");
+        vector_sender.send(rotated_vectors).unwrap_or_else(|_| panic!("{}", "AAAAAAAAA, main thread should always be able to receive".bold().red()));
         println!("rotated vector succesfully sent");
 
-        println!("sending layers");
-        layer_sender.send(layers).unwrap_or_else(|_| panic!("AAAAAAAAA, main thread should always be able to receive"));
+        // println!("sending layers");
+        layer_sender.send(layers).unwrap_or_else(|_| panic!("{}", "AAAAAAAAA, main thread should always be able to receive".bold().red()));
         println!("layers succesfully sent");
 
         // println!("\ngenerating points for lines in vector: {:?} \n", lines_to_render);
@@ -275,30 +275,30 @@ async fn pull_request(info: web::Json<PullReqeustPackage>) -> impl Responder {
         //     line_screen_point_vecs.push(result_receiver.recv().unwrap());
         // }
 
-        println!("\n\nstarting to render coordinate system");
+        // println!("\n{}", "starting to render coordinate system".bold());
 
-        let coordinate_lines_screen_point_vecs: Vec<Vec<ScreenPoint>> = coordinate_lines.iter()
+        // let coordinate_lines_screen_point_vecs: Vec<Vec<ScreenPoint>> = coordinate_lines.iter()
+        //                                 .map(|line| match line.render_line(&screen, camera_position, resolution_x as u32, resolution_y as u32, 0.8){
+        //                                     Ok(value) => value,
+        //                                     Err(err) => {error_sender.send(err).unwrap(); panic!()},
+        //                                 })
+        //                                 .collect();
+
+        // println!("{}", "finished rendering coordinate system".bold());
+        println!("\n{}", "starting to render Vectors".bold());
+
+        let line_screen_point_vecs: Vec<Vec<ScreenPoint>> = lines_to_render.iter()
                                         .map(|line| match line.render_line(&screen, camera_position, resolution_x as u32, resolution_y as u32, 0.8){
                                             Ok(value) => value,
                                             Err(err) => {error_sender.send(err).unwrap(); panic!()},
                                         })
                                         .collect();
 
-        println!("finished rendering coordinate system\n\n");
-        println!("\n\nstarting to render Vectors");
+        println!("{}", "finished rendering Vectors".bold());
 
-        let mut line_screen_point_vecs: Vec<Vec<ScreenPoint>> = lines_to_render.iter()
-                                        .map(|line| match line.render_line(&screen, camera_position, resolution_x as u32, resolution_y as u32, 0.8){
-                                            Ok(value) => value,
-                                            Err(err) => {error_sender.send(err).unwrap(); panic!()},
-                                        })
-                                        .collect();
-
-        println!("finished rendering Vectors\n\n");
-
-        for list in coordinate_lines_screen_point_vecs{
-            line_screen_point_vecs.push(list);
-        }
+        // for list in coordinate_lines_screen_point_vecs{
+        //     line_screen_point_vecs.push(list);
+        // }
 
         let mut screen_points = vec!();
 
@@ -329,11 +329,11 @@ async fn pull_request(info: web::Json<PullReqeustPackage>) -> impl Responder {
         
         pixel_sender.send(optimised_screen_points).unwrap_or_else(|err| println!("{}",err));
 
-        println!("\nall done here\n\n\n\n\n\n\n");
+        println!("{}", "all done here".bold().green());
     });
-    println!("trying to receive");
+    // println!("trying to receive");
     let error = match error_receiver.recv(){
-        Ok(err) => err,
+        Ok(err) => {println!("{} {}", "An Error occured:".red().bold(), err.red().bold()); err},
         Err(_) => "No Error detected".to_string(),
     };
     let vectors = vector_receiver.recv().unwrap_or_else(|err| {println!("{}",err); vec!(Vector3D::new(0.0, 0.0, 0.0))});
@@ -373,7 +373,7 @@ async fn main() -> std::io::Result<()> {
             .service(Files::new("/static", "./static").show_files_listing())
             .service(web::resource("/").to(index))
             .service(web::resource("/3D").to(index))
-            .service(web::resource("/2D").to(index2D))
+            .service(web::resource("/2D").to(index2d))
             .service(web::resource("/api/pull-request").route(web::put().to(pull_request)))
     })
     .bind("0.0.0.0:80")?

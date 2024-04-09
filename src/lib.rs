@@ -52,6 +52,7 @@ impl Vector3D{
     }
 
     pub fn get_orthagonal(&self, other: &Vector3D) -> Result<Vector3D, &str>{
+        // println!("getting orthagonal Vector");
         // set z and y value of output to 1 since it can be any value as long as x is acordingly set
         let mut output = Vector3D::new(1.0, 1.0, 1.0);
         let mut second_try = false;
@@ -82,7 +83,7 @@ impl Vector3D{
                 output.y = (-vector_2.z + vector_1.z / vector_1.x * vector_2.x) / ((-vector_1.y / vector_1.x * vector_2.x + vector_2.y)+ offset);
                 output.x = (output.y * vector_1.y + vector_1.z) / -vector_1.x;
                 output.normalize();
-                println!("created orthagonal Vector via methode 1: {:?} with vector_1: {:?}, and vector_2: {:?}", output, vector_1, vector_2);
+                // println!("created orthagonal Vector via methode 1: {:?} with vector_1: {:?}, and vector_2: {:?}", output, vector_1, vector_2);
                 return Ok(output);
             } else if vector_1.y.abs() > 0.02 {
                 // making sure not to divide by zero by slightly moving the vector in case of a via this methode uncomputanionable position
@@ -92,7 +93,7 @@ impl Vector3D{
                 output.x = (-vector_2.z + vector_1.z / vector_1.y * vector_2.y) / ((-vector_1.x / vector_1.y * vector_2.y + vector_2.x)+ offset);
                 output.y = (output.x * vector_1.x + vector_1.z) / -vector_1.y;
                 output.normalize();
-                println!("created orthagonal Vector via methode 2: {:?} with vector_1: {:?}, and vector_2: {:?}", output, vector_1, vector_2);
+                // println!("created orthagonal Vector via methode 2: {:?} with vector_1: {:?}, and vector_2: {:?}", output, vector_1, vector_2);
                 return Ok(output);
             } else if vector_1.z.abs() > 0.02 {
                 // making sure not to divide by zero by slightly moving the vector in case of a via this methode uncomputanionable position
@@ -102,14 +103,14 @@ impl Vector3D{
                 output.y = (-vector_2.x + vector_1.x / vector_1.z * vector_2.z) / ((-vector_1.y / vector_1.z * vector_2.z + vector_2.y) + offset);
                 output.z = (output.y * vector_1.y + vector_1.x) / -vector_1.z;
                 output.normalize();
-                println!("created orthagonal Vector via methode 3: {:?} with vector_1: {:?}, and vector_2: {:?}", output, vector_1, vector_2);
+                // println!("created orthagonal Vector via methode 3: {:?} with vector_1: {:?}, and vector_2: {:?}", output, vector_1, vector_2);
                 return Ok(output);
             }
             if second_try == true{
                 break;
             }
             second_try = true;
-            println!("going for a second try to get orthagonal with switched vectors");
+            // println!("going for a second try to get orthagonal with switched vectors");
             vector_1 = other;
             vector_2 = self;
         }
@@ -132,14 +133,14 @@ impl Vector3D{
             } else {
                 relativ_vector = Vector3D::new(0.0, -1.0, 0.0);
             }
-            println!("going with relativ vector: {:?} because of focus vector: {:?}", relativ_vector, focus_vector);
+            // println!("going with relativ vector: {:?} because of focus vector: {:?}", relativ_vector, focus_vector);
 
             // creating a with  and hight Vector and normalizing them
             
             let screen_with_vector = relativ_vector.get_orthagonal(&focus_vector).unwrap_or_else(|_| focus_vector.get_orthagonal(&relativ_vector).unwrap()).normalize();
             let screen_hight_vector = focus_vector.get_orthagonal(&screen_with_vector).unwrap_or_else(|_| screen_with_vector.get_orthagonal(&focus_vector).unwrap()).normalize();
 
-            println!("screen_with_vector: {:?}, screen_hight_vector: {:?}", screen_with_vector, screen_hight_vector);
+            // println!("screen_with_vector: {:?}, screen_hight_vector: {:?}", screen_with_vector, screen_hight_vector);
 
             let screen_with = with;
             let screen_hight = screen_with / aspect_ratio;
@@ -286,7 +287,8 @@ impl Line{
         }
     }
 
-    pub fn turn_into_points(&self, point_collection:&mut Vec<Point>, point_interval_distance: u32){       
+    pub fn turn_into_points(&self, point_collection:&mut Vec<Point>, point_interval_distance: u32){
+        println!("turning line into points");       
         let ray_direction: Vector3D = (self.ending_point - self.starting_point).normalize();
         let mut current_location: Vector3D = self.starting_point;
 
@@ -294,8 +296,8 @@ impl Line{
               !relativ_change(self.starting_point.y, self.ending_point.y, current_location.y, self.ending_point.y) ||
               !relativ_change(self.starting_point.z, self.ending_point.z, current_location.z, self.ending_point.z)
         {
-            println!("pushing point for line with direction: {:?} \nwith current location: {:?}", ray_direction, current_location);
-            println!("starting point: {:?} \nending point: {:?} \n", self.starting_point, self.ending_point);
+            // println!("pushing point for line with direction: {:?} \nwith current location: {:?}", ray_direction, current_location);
+            // println!("starting point: {:?} \nending point: {:?} \n", self.starting_point, self.ending_point);
             point_collection.push(Point{ location:current_location, color: self.color});
             current_location = current_location + ray_direction * point_interval_distance as f32;
             // let duration = Duration::from_secs(1);
@@ -305,7 +307,7 @@ impl Line{
     }
 
     pub fn render_line<'a>(&'a self, screen: &'a SquareSurface, camera_position: Vector3D, x_resolution: u32, y_resolution: u32, given_line_with: f32) -> Result<Vec<ScreenPoint<'a>>, String>{
-        println!("\nstarting to render line");
+        println!("starting to render line");
         let mut output = vec!();
 
         let screen_plain = screen.get_plane();
@@ -326,7 +328,7 @@ impl Line{
         let ending_diameter = ((scale(ending_pixel_truple.1) * 2) as f32 * given_line_with) as i64;
         let start_end_size_differens: i64 = ending_diameter - starting_diameter;
 
-        println!("rendering line with starting size: {} \nand ending size: {}\n meaning a size differers of: {}", starting_diameter, ending_diameter, start_end_size_differens);
+        // println!("rendering line with starting size: {} \nand ending size: {}\n meaning a size differers of: {}", starting_diameter, ending_diameter, start_end_size_differens);
         // thread::sleep(Duration::from_secs(2));
 
         if x_distance.abs() == 0 && y_distance == 0 {
@@ -392,7 +394,7 @@ impl Line{
             }
         }
         output = output.iter().filter(|pixel| (pixel.x > 0 && pixel.x <= x_resolution as i64) && (pixel.y > 0 && pixel.y <= y_resolution as i64)).map(|element| *element).collect();
-        println!("finished rendering line\n");
+        // println!("finished rendering line\n");
         Ok(output)
     } 
 }
@@ -423,9 +425,9 @@ impl Plane{
         vector.normalize();
         let collision_occurence_length = (self.value - vector_origin.location.x * self.x - vector_origin.location.y * self.y - vector_origin.location.z * self.z)
                                         / (vector.x * self.x + vector.y * self.y + vector.z * self.z);
-        println!("finding Vector interseption");
-        println!(" \nself: {:?} \nvector origin: {:?} \nvector : {:?} \ncalculation : \n({} - {} * {} - {} * {} - {} * {}) / ({} * {} + {} * {} + {} * {})", self, vector_origin, vector, self.value, vector_origin.location.x, self.x, vector_origin.location.y, self.y, vector_origin.location.z, self.z, vector.x, self.x,  vector.y, self.y, vector.z, self.z);
-        println!("collision occurence_length: {} \n", collision_occurence_length);
+        // println!("finding Vector interseption");
+        // println!(" \nself: {:?} \nvector origin: {:?} \nvector : {:?} \ncalculation : \n({} - {} * {} - {} * {} - {} * {}) / ({} * {} + {} * {} + {} * {})", self, vector_origin, vector, self.value, vector_origin.location.x, self.x, vector_origin.location.y, self.y, vector_origin.location.z, self.z, vector.x, self.x,  vector.y, self.y, vector.z, self.z);
+        // println!("collision occurence_length: {} \n", collision_occurence_length);
         Point::new(vector_origin.location + *vector * collision_occurence_length, vector_origin.color)
     }
 }
@@ -471,13 +473,13 @@ impl SquareSurface{
             z: orthagonal_vector.z, 
             value: -1.0 * (orthagonal_vector.x * (- self.origin.x) + orthagonal_vector.y * (- self.origin.y) + orthagonal_vector.z * (- self.origin.z)) 
         };
-        println!("created Plane: {:?}", output);
+        // println!("created Plane: {:?}", output);
         output
 
     }
 
     pub fn locate_point(&self, point:Point, collision_distance:f32) -> Result<RayCollision, &str>{
-        println!("\nlocating point:");
+        // println!("\nlocating point:");
         let mut hight = 0.0;
         let mut with = 0.0;
         if self.with_vector.x > 0.01  || self.with_vector.x < -0.01{
@@ -495,14 +497,14 @@ impl SquareSurface{
             return Err("unaceptable with vector");
         }
         if (hight > self.hight || with > self.with) || (hight < 0.0 || with < 0.0) || collision_distance < 0.01{
-            println!("Point: {:?} \nmissed at: x:{}, y:{}", point, with, hight);
+            // println!("Point: {:?} \nmissed at: x:{}, y:{}", point, with, hight);
             return Ok(RayCollision::Miss(RelativScreenPosition{
                 parent: &self,
                 relativ_with: with / self.with,
                 relativ_hight: hight / self.hight,
                 color: self.color}, CollisionDistance { distance: collision_distance }));
         } else {
-            println!("Point: {:?} \nlocated at: x:{}, y:{}", point, with, hight);
+            // println!("Point: {:?} \nlocated at: x:{}, y:{}", point, with, hight);
             return Ok(RayCollision::Collision(RelativScreenPosition{
                 parent: &self,
                 relativ_with: with / self.with,
@@ -583,7 +585,7 @@ pub struct RelativScreenPosition<'a>{
 impl<'a> RelativScreenPosition<'a>{
 
     pub fn turn_into_screen_point(&self, x_resolution: u32, y_resolution:  u32) -> ScreenPoint<'a>{
-        println!("\ncreating screen point at relativ position x:{}, y:{} \nwith resolution x:{}, y:{} \nand pixel position x:{}, y:{}", self.relativ_with, self.relativ_hight, x_resolution, y_resolution, (self.relativ_with * x_resolution as f32).round(), ((1.0 - self.relativ_hight) * y_resolution as f32).round());
+        // println!("\ncreating screen point at relativ position x:{}, y:{} \nwith resolution x:{}, y:{} \nand pixel position x:{}, y:{}", self.relativ_with, self.relativ_hight, x_resolution, y_resolution, (self.relativ_with * x_resolution as f32).round(), ((1.0 - self.relativ_hight) * y_resolution as f32).round());
         ScreenPoint{
             parent: self.parent,
             x: (self.relativ_with * x_resolution as f32).round() as i64,
@@ -597,7 +599,7 @@ impl<'a> RelativScreenPosition<'a>{
         let center = self.turn_into_screen_point(x_resolution, y_resolution);
         
         for i in 0..(radius + 1) {
-            println!("((({} / ({} + 1)).asin()).cos() * {}).round() = {}", i, radius, radius, ((((i as f32 / (radius as f32 +1.0) as f32).asin() as f32).cos() as f32) * radius as f32).round() as i64);
+            // println!("((({} / ({} + 1)).asin()).cos() * {}).round() = {}", i, radius, radius, ((((i as f32 / (radius as f32 +1.0) as f32).asin() as f32).cos() as f32) * radius as f32).round() as i64);
             for unit in 0..((((i as f32 / (radius as f32 +1.0) as f32).asin() as f32).cos() as f32) * radius as f32).round() as i64 + 1{
                 println!("{}", unit);
                 for t in vec!(-1, 1) {
@@ -621,7 +623,7 @@ impl<'a> RelativScreenPosition<'a>{
     pub fn turn_into_dyn_sized_screen_point(&self, x_resolution: u32, y_resolution: u32, distance: CollisionDistance) -> Vec<ScreenPoint<'a>>{
         let mut output = vec!();
         let center = self.turn_into_screen_point(x_resolution, y_resolution);
-        println!("\nsizeing screen point at x:{}, y:{}", self.relativ_with, self.relativ_hight);
+        // println!("\nsizeing screen point at x:{}, y:{}", self.relativ_with, self.relativ_hight);
 
         let radius: u32 = scale(distance.distance);
 
@@ -630,7 +632,7 @@ impl<'a> RelativScreenPosition<'a>{
             output = self.turn_into_stat_sized_screen_point(x_resolution, y_resolution, radius);
         }
             
-        println!("started with center: {:?} \nand distance: {:?}, \nand turned it into dots: {:?} \nwith radius: {}", center, distance, output, radius);
+        // println!("started with center: {:?} \nand distance: {:?}, \nand turned it into dots: {:?} \nwith radius: {}", center, distance, output, radius);
         output
     }
 }
@@ -810,7 +812,7 @@ pub struct RotationMatrix {
 }
  
 fn remove_brackets_content(input_text: String) -> String {
-    println!("parsing: {}", input_text);
+    // println!("parsing: {}", input_text);
     let mut  in_brackets: bool = false;
     let mut output = vec!();
 
@@ -836,6 +838,7 @@ fn remove_brackets_content(input_text: String) -> String {
 impl StringRotationMatrix{
 
     pub fn turn_into_rotation_matrix<'a>(self) -> Result<RotationMatrix, String>{
+        println!("translating Matrix");
         let mut parsed_line_x: [Arc<Mutex<dyn Fn(f32, f32) -> f32>>; 3] = [Arc::new(Mutex::new((|x, _theta| {0.0 * x}))), Arc::new(Mutex::new((|x, _theta| {0.0 * x}))), Arc::new(Mutex::new((|x, _theta| {0.0 * x})))];
         let  math_operations:HashMap<&str, Arc<Mutex<dyn Fn(f32, f32) -> f32>>>  = build_math_hashmap();
         for (index, element) in self.line_x.iter().enumerate(){

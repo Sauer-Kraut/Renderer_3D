@@ -1,5 +1,7 @@
+use std::cell::RefCell;
 use std::ops::{Add, Mul, Sub};
 use std::collections::HashMap;
+use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use std::f64::consts::PI;
 use futures::stream::Enumerate;
@@ -51,7 +53,12 @@ impl Vector3D{
         *self
     }
 
+    pub fn dot_product(&self, other: Vector3D) -> f32 {
+        self.x * other.x + self.y * other.y + self.z * other.z
+    }
+
     pub fn get_orthagonal(&self, other: &Vector3D) -> Result<Vector3D, &str>{
+        // JUST USE CROSS LMAO
         // println!("getting orthagonal Vector");
         // set z and y value of output to 1 since it can be any value as long as x is acordingly set
         let mut output = Vector3D::new(1.0, 1.0, 1.0);
@@ -312,12 +319,12 @@ impl Line{
 
         let screen_plain = screen.get_plane();
 
-        let starting_point_collision = screen_plain.find_vector_interception(&Point::new(self.starting_point, self.color), &mut (camera_position - self.starting_point));
+        let starting_point_collision = screen_plain.find_vector_interception(&Point::new(self.starting_point, self.color), &mut (camera_position - self.starting_point)).unwrap();
         let starting_pixel_truple =  match screen.locate_point(starting_point_collision.clone(), (starting_point_collision.location - self.starting_point).occurence_length())? { 
             RayCollision::Collision(relativ_screen_position,  collision_distance) => (relativ_screen_position.turn_into_screen_point(x_resolution, y_resolution), collision_distance.distance),
             RayCollision::Miss(relativ_screen_position, collision_distance) => (relativ_screen_position.turn_into_screen_point(x_resolution, y_resolution), collision_distance.distance)};
 
-        let ending_point_collision = screen_plain.find_vector_interception(&Point::new(self.ending_point, self.color), &mut (camera_position - self.ending_point));
+        let ending_point_collision = screen_plain.find_vector_interception(&Point::new(self.ending_point, self.color), &mut (camera_position - self.ending_point)).unwrap();
         let ending_pixel_truple =  match screen.locate_point(ending_point_collision.clone(), (ending_point_collision.location - self.ending_point).occurence_length())? { 
             RayCollision::Collision(relativ_screen_position,  collision_distance) => (relativ_screen_position.turn_into_screen_point(x_resolution, y_resolution), collision_distance.distance),
             RayCollision::Miss(relativ_screen_position,  collision_distance) => (relativ_screen_position.turn_into_screen_point(x_resolution, y_resolution), collision_distance.distance)};
@@ -397,6 +404,48 @@ impl Line{
         // println!("finished rendering line\n");
         Ok(output)
     } 
+
+    pub fn find_intercept(&self, other_line: &Line) -> Option<Vector3D>{
+
+        // checking if both are in same plane fist 
+        let self_direction = self.ending_point - self.starting_point;
+        let other_direction = self.ending_point - self.starting_point;
+
+        let self_direction_norm = self_direction.clone().normalize();
+        let other_direction_norm = other_direction.clone().normalize();
+
+        if  self_direction_norm == other_direction_norm ||  self_direction_norm * -1.0 == other_direction_norm {
+            return None;
+        }
+
+        let ortahgonal_vector = self_direction.get_orthagonal(&other_direction).unwrap();
+        let encompasing_plane = Plane::new(ortahgonal_vector.x, ortahgonal_vector.y, ortahgonal_vector.z, ortahgonal_vector.x * self.starting_point.x + ortahgonal_vector.y * self.starting_point.y + ortahgonal_vector.z * self.starting_point.z).unwrap();
+
+        if !encompasing_plane.check_point(other_line.starting_point) || !encompasing_plane.check_point(other_line.ending_point) {
+            return None;
+        }
+
+
+        let mut orthangonal_Plane = Plane::new(self_direction.x, self_direction.y, self_direction.z, self_direction.x * self.starting_point.x + self_direction.y* self.starting_point.y + self_direction.z * self.starting_point.z).unwrap();
+        let other_line_point_start = orthangonal_Plane.find_vector_interception(&Point::new(other_line.starting_point, Color::white()), &mut (other_line.ending_point - other_line.starting_point))?;
+        orthangonal_Plane = Plane::new(self_direction.x, self_direction.y, self_direction.z, self_direction.x * self.ending_point.x + self_direction.y* self.ending_point.y + self_direction.z * self.ending_point.z).unwrap();
+        let other_line_point_end = orthangonal_Plane.find_vector_interception(&Point::new(other_line.ending_point, Color::white()), &mut (other_line.ending_point - other_line.starting_point))?;
+
+        let distance_start = (other_line_point_start.location - self.starting_point).occurence_length();
+        let distance_end = (other_line_point_end.location - self.ending_point).occurence_length();
+
+        let distance_shift = (distance_end - distance_start);
+
+        let way_to_go = distance_start / distance_shift;
+
+        // if way_to_go.abs() > 1.0 {
+        //    return None;
+        // }
+        
+        let collision = self.starting_point + self_direction * way_to_go;
+
+        Some(collision)
+    }
 }
 
 fn relativ_change<T: PartialOrd>(initial_relation_1: T, initial_relation_2: T, current_relation_1: T,  current_relation_2:T) -> bool{
@@ -421,14 +470,90 @@ pub struct Plane{
 
 impl Plane{
 
-    pub fn find_vector_interception(&self, vector_origin:&Point, vector: &mut Vector3D) -> Point{
+    pub fn new (x: f32, y: f32, z: f32, value: f32) -> Result<Plane, String> {
+        if !(x == 0.0 && y == 0.0 && z == 0.0) {
+            return Ok(Plane {
+                x,
+                y,
+                z,
+                value,
+            })
+        }
+        Err("you tried to make a 0,0,0 Plane. wtf?".to_string())
+    }
+
+    pub fn new_from_points(location_1: Vector3D, location_2:Vector3D, location_3:Vector3D) -> Result<Plane, String> {
+        if location_1 == location_2 || location_1 == location_3 || location_2 == location_3 {
+            return Err("Two or more locations were duplicates, Plane not definitvly determinable".to_string());
+        }
+        let vector_1 = location_1 - location_2;
+        let vector_2 = location_1 - location_3;
+
+        let normal_vector = vector_1.get_orthagonal(&vector_2).unwrap();
+        let plane_value = normal_vector.dot_product(location_1);
+        let plane = Plane::new(normal_vector.x, normal_vector.y, normal_vector.z, plane_value).unwrap();
+
+        Ok(plane)
+    }
+
+    pub fn get_any_point (&self) -> Vector3D {
+        if self.value == 0.0 {
+            return Vector3D::new(0.0, 0.0, 0.0);
+        }
+        if (self.x != 0.0) {
+            return Vector3D::new(self.value / self.x, 0.0, 0.0);
+        } else if (self.y != 0.0) {
+            return Vector3D::new(0.0, self.value / self.y, 0.0);
+        } else {
+            return Vector3D::new(0.0, 0.0, self.value / self.z);
+        }
+    }
+
+    pub fn check_point(&self, point: Vector3D) -> bool {
+        let point_value = point.x * self.x + point.y * self.y + point.z * self.z;
+        if point_value == self.value {
+            return true;
+        }
+        false
+    }
+
+    pub fn find_vector_interception(&self, vector_origin:&Point, vector: &mut Vector3D) -> Option<Point>{
         vector.normalize();
+        let dot_product = vector.x * self.x + vector.y * self.y + vector.z * self.z;
+        if dot_product == 0.0 {
+            return None;
+        }
         let collision_occurence_length = (self.value - vector_origin.location.x * self.x - vector_origin.location.y * self.y - vector_origin.location.z * self.z)
                                         / (vector.x * self.x + vector.y * self.y + vector.z * self.z);
         // println!("finding Vector interseption");
         // println!(" \nself: {:?} \nvector origin: {:?} \nvector : {:?} \ncalculation : \n({} - {} * {} - {} * {} - {} * {}) / ({} * {} + {} * {} + {} * {})", self, vector_origin, vector, self.value, vector_origin.location.x, self.x, vector_origin.location.y, self.y, vector_origin.location.z, self.z, vector.x, self.x,  vector.y, self.y, vector.z, self.z);
         // println!("collision occurence_length: {} \n", collision_occurence_length);
-        Point::new(vector_origin.location + *vector * collision_occurence_length, vector_origin.color)
+        Some(Point::new(vector_origin.location + *vector * collision_occurence_length, vector_origin.color))
+    }
+
+    pub fn find_plane_interception(&self, plane: Plane) -> Line {
+        let normal_vector = Vector3D::new(self.x, self.y, self.z);
+        let additional_vector = Vector3D::new(self.x, self.y, self.z + 0.1);
+        let any_plane_point = Point::new(self.get_any_point(), Color::white());
+
+        let mut plane_vector_1 = normal_vector.get_orthagonal(&additional_vector).unwrap();
+        let mut plane_vector_2 = normal_vector.get_orthagonal(&plane_vector_1).unwrap();
+        let mut plane_vector_3 = plane_vector_1 + plane_vector_2;
+
+        let intercept_1 = self.find_vector_interception(&any_plane_point, &mut plane_vector_1);
+        let intercept_2 = self.find_vector_interception(&any_plane_point, &mut plane_vector_2);
+        let intercept_3 = self.find_vector_interception(&any_plane_point, &mut plane_vector_3);
+
+        match intercept_1 {
+            None => {return Line::new(intercept_2.unwrap().location, intercept_3.unwrap().location, Color::black())},
+            _ => {}
+        }
+        match intercept_2 {
+            None => {return Line::new(intercept_1.unwrap().location, intercept_3.unwrap().location, Color::black())},
+            _ => {}
+        }
+
+        Line::new(intercept_1.unwrap().location, intercept_2.unwrap().location, Color::black())
     }
 }
 
@@ -1020,4 +1145,184 @@ pub fn build_math_hashmap() -> HashMap<&'static str, Arc<Mutex<dyn Fn(f32, f32) 
     math_operations.insert("-1.0", Arc::new(Mutex::new(|x: f32, _theta:f32| -x)));
 
     math_operations
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#[derive(Clone)]
+#[derive(Debug)]
+#[derive(PartialEq)]
+pub struct Corner<'a> {
+    position: Vector3D,
+    connection_1: Option<Rc<RefCell<Corner<'a>>>>,
+    connection_2: Option<Rc<RefCell<Corner<'a>>>>,
+}
+
+impl Corner<'_> {
+    
+    fn new<'a> (position: Vector3D, connection_1: Option<Rc<RefCell<Corner<'a>>>>, connection_2: Option<Rc<RefCell<Corner<'a>>>>) -> Corner<'a> {
+        // Add conection check
+        Corner {
+            position,
+            connection_1,
+            connection_2
+        }
+    }
+}
+
+
+#[derive(Clone)]
+#[derive(Debug)]
+pub struct Polygon<'a> {
+    corners: Vec<Rc<RefCell<Corner<'a>>>>
+}
+
+impl <'a> Polygon<'a> {
+
+    fn new (corners: Vec<Rc<RefCell<Corner<'a>>>>) -> Result<Polygon, Box<dyn std::error::Error>> {
+
+        // checking if Polygon  is valid by verifying each corner is connected to 2 other corners
+        for corner in corners.iter() {
+            let mut connection_counter = 0;
+            for connection in corners.iter() {
+                if corner.borrow().connection_1.clone().unwrap() == *connection || corner.borrow().connection_2.clone().unwrap() == *corner {
+                    connection_counter += 1;
+                }
+            }
+            if connection_counter != 2 {
+                return Err(Box::new(std::fmt::Error::default()))
+            }
+        }
+        if corners.len() < 3 {
+            return Err(Box::new(std::fmt::Error::default()))
+        }
+        Ok(Polygon {
+            corners
+        })
+    }
+
+    // Will have to rework corners to work with shared ownership, could have had this though sooner lmao
+
+    fn cut (mut self, plane: Plane) -> Vec<Polygon<'a>> {
+        let polygon_plane = Plane::new_from_points(self.corners.get(0).unwrap().borrow().position, self.corners.get(1).unwrap().borrow().position, self.corners.get(2).unwrap().borrow().position).unwrap();
+        let cuting_line = polygon_plane.find_plane_interception(plane);
+        let mut cut_polygons = vec!();
+
+        // Placeholder corner for later use, connections dont mean shit
+        let mut previous_corner = Rc::clone(&self.corners.get(0).unwrap().borrow().connection_2.clone().unwrap());
+        let mut current_corner = Rc::clone(self.corners.get(0).unwrap());
+        let mut collision_found = false;
+        let mut seperated_corners = vec!();
+        let mut remaining_corners = vec!();
+        let mut unclosed_polygons = vec!();
+        let mut loop_start = true;
+        
+        loop {
+            {
+            if loop_start {
+                break;
+            }
+
+            let connection = Line::new(previous_corner.borrow().position, current_corner.borrow().position, Color::white());
+            let collision = connection.find_intercept(&cuting_line);
+
+            match collision {
+                Some(location) => { 
+                    let mut connection_1 = None;
+                    let mut connection_2 = None;
+                    if collision_found {
+                        connection_1 = Some(Rc::clone(&previous_corner));
+                    } else {
+                        connection_1 = Some(Rc::clone(&current_corner));
+                    }
+                    let collision_corner = Rc::new(RefCell::new(Corner::new(location, connection_1, connection_2)));
+
+                    collision_found = !collision_found;
+
+                    if current_corner.borrow().connection_1.clone().unwrap() == previous_corner {
+                        if collision_found {
+                            current_corner.borrow_mut().connection_1 = Some(Rc::clone(&collision_corner));
+                        }
+                    } else {
+
+                    }
+
+                    seperated_corners.push(Rc::clone(&collision_corner));
+                    remaining_corners.push(collision_corner.clone());
+                },
+                _ => {}
+            }
+            }
+            loop_start = false;  
+
+            if collision_found {
+                seperated_corners.push(Rc::clone(&current_corner));
+            } else {
+                remaining_corners.push(Rc::clone(&current_corner))
+            }
+
+            if previous_corner == current_corner.borrow().connection_1.clone().unwrap() {
+                let switcher = Rc::clone(&current_corner);
+                current_corner = Rc::clone(&switcher.borrow().connection_1.clone().unwrap());
+                previous_corner = Rc::clone(&switcher);
+            } else {
+                let switcher = Rc::clone(&current_corner);
+                current_corner = Rc::clone(&switcher.borrow().connection_2.clone().unwrap());
+                previous_corner = Rc::clone(&switcher);
+            }
+
+            if seperated_corners.len() != 0 && collision_found == false {
+                // should already clear seperated_corners
+                unclosed_polygons.push(seperated_corners);
+                break;
+            }
+
+            if current_corner == Rc::clone(self.corners.get(0).unwrap()) && !loop_start {
+                break;
+            }
+        }
+        unclosed_polygons.push(remaining_corners);
+
+        for polygone in unclosed_polygons.iter() {
+            let mut finished_polygone = vec!(); 
+            for (index, corner) in polygone.iter().enumerate() {
+                match polygone.get(index - 1) {
+                    Some(previous) => {corner.borrow_mut().connection_1 = Some(Rc::clone(&previous))},
+                    _ => {corner.borrow_mut().connection_1 = Some(Rc::clone(&polygone.last().unwrap()))}
+                }
+                match polygone.get(index + 1) {
+                    Some(next) => {corner.borrow_mut().connection_2 = Some(Rc::clone(&next))},
+                    _ => {corner.borrow_mut().connection_2 = Some(Rc::clone(&polygone.first().unwrap()))}
+                }
+                finished_polygone.push(Rc::clone(&corner));
+            }
+            cut_polygons.push(Polygon::new(finished_polygone).unwrap());
+        }
+        cut_polygons
+    }
 }

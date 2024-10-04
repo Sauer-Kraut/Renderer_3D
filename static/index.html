@@ -18,6 +18,7 @@
             padding: 0;
             position: fixed;
             /* overflow: hidden; */
+            background-color: whitesmoke;
         }
 
         .canvas-container {
@@ -434,6 +435,12 @@
             sliderDiv.appendChild(slider);
 
             return sliderDiv;
+        }
+
+        function increaseAngleSlider(number) {
+            console.log("increasing angle slider value")
+            var sliderDiv = document.getElementById(`AngleSlider_${number}`);
+            sliderDiv.value = sliderDiv.value + 1;
         }
 
         function updateSliderText(sliderId, LabelId, LabelText) {
@@ -961,8 +968,6 @@
             // }
         }
 
-        // If you want to automatically call the function every second
-        // setInterval(sendPutRequest, 10000);
         var sideWidth = getDisplayResolution()[0] * 0.2;
         if (sideWidth < 300) {
             sideWidth = 300;
@@ -972,10 +977,17 @@
         setInterval(setCanvasSize("pixelCanvas", determineCanvasResolution()), 100);
         addVector();
 
-        sendPutRequest("X");
-        sendPutRequest("Y");
-        sendPutRequest("Z");
+        //sendPutRequest("X");
+        //sendPutRequest("Y");
+        //sendPutRequest("Z");
         sendPutRequest(-1);
+
+        increaseAngleSlider(-1)
+
+        // If you want to automatically call the function every second
+        //setInterval(async () => {await sendPutRequest(-1)}, 50);
+        //setInterval(increaseAngleSlider(-1), 100);
+
     </script>
 </body>
 </html>

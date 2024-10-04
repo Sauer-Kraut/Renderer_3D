@@ -1,13 +1,20 @@
+use core::panic;
+// use core::error;
 use std::cell::RefCell;
 use std::ops::{Add, Mul, Sub};
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use std::f64::consts::PI;
+use actix_web::web::get;
+use askama::filters::upper;
 use futures::stream::Enumerate;
+use futures::task::noop_waker_ref;
 use serde::{Deserialize, Serialize};
+use tokio::sync::oneshot::error;
 use std::{thread, vec};
 use std::time::Duration;
+use std::collections::HashSet;
 
 
 
@@ -182,6 +189,15 @@ impl Vector3D{
 
         Ok((upper_arrow * arrow_length, lower_arrow * arrow_length))
     }
+
+    // All values in radians
+    pub fn find_angle(&self, other: Vector3D) -> f32 {
+        let mut result = (self.dot_product(other) / (self.occurence_length() * other.occurence_length())).acos();
+        if result > 3.141 / 2.0 {
+            result = result - 3.141 / 2.0;
+        }
+        result
+    }
 }
 
 impl Add for Vector3D{
@@ -252,6 +268,19 @@ impl Color{
     }
 }
 
+impl Mul<f32> for Color{
+    type Output = Self;
+
+    fn mul(self, factor:f32) -> Self{
+        let return_vector =  Color{
+            red: (self.red as f32 * factor).clamp(0.0, 255.0) as u8,
+            green: (self.green as f32 * factor).clamp(0.0, 255.0) as u8,
+            blue: (self.blue as f32 * factor).clamp(0.0, 255.0) as u8
+        };
+        return_vector
+    }
+}
+
 impl PartialEq for Color {
 
     fn eq(&self, other: &Self) -> bool {
@@ -275,9 +304,18 @@ impl Point{
             color
         }
     }
+
+    pub fn draw<'a> (&'a self, camera_position: Vector3D, screen: &'a SquareSurface, x_resolution: u32, y_resolution: u32) -> Result<(ScreenPoint, f32), String> {
+        let point_collision = screen.get_plane().find_vector_interception(self, &mut (camera_position - self.location)).unwrap();
+        let pixel_truple =  match screen.locate_point(point_collision.clone(), (point_collision.location - self.location).occurence_length())? { 
+            RayCollision::Collision(relativ_screen_position,  collision_distance) => (relativ_screen_position.turn_into_screen_point(x_resolution, y_resolution), collision_distance.distance),
+            RayCollision::Miss(relativ_screen_position, collision_distance) => (relativ_screen_position.turn_into_screen_point(x_resolution, y_resolution), collision_distance.distance)};
+        Ok(pixel_truple)
+    }
 }
 
 #[derive(Debug)]
+#[derive(Clone)]
 pub struct Line{
     starting_point: Vector3D,
     ending_point: Vector3D,
@@ -313,27 +351,38 @@ impl Line{
         }
     }
 
-    pub fn render_line<'a>(&'a self, screen: &'a SquareSurface, camera_position: Vector3D, x_resolution: u32, y_resolution: u32, given_line_with: f32) -> Result<Vec<ScreenPoint<'a>>, String>{
-        println!("starting to render line");
+    pub fn render_line<'a>(self, screen: &'a SquareSurface, camera_position: Vector3D, x_resolution: u32, y_resolution: u32, given_line_with: f32) -> Result<Vec<ScreenPoint<'a>>, String>{
+        
+        // println!("starting to render line");
         let mut output = vec!();
 
-        let screen_plain = screen.get_plane();
+        // let screen_plain = screen.get_plane();
 
-        let starting_point_collision = screen_plain.find_vector_interception(&Point::new(self.starting_point, self.color), &mut (camera_position - self.starting_point)).unwrap();
-        let starting_pixel_truple =  match screen.locate_point(starting_point_collision.clone(), (starting_point_collision.location - self.starting_point).occurence_length())? { 
-            RayCollision::Collision(relativ_screen_position,  collision_distance) => (relativ_screen_position.turn_into_screen_point(x_resolution, y_resolution), collision_distance.distance),
-            RayCollision::Miss(relativ_screen_position, collision_distance) => (relativ_screen_position.turn_into_screen_point(x_resolution, y_resolution), collision_distance.distance)};
+        // let starting_point_collision = screen_plain.find_vector_interception(&Point::new(self.starting_point, self.color), &mut (camera_position - self.starting_point)).unwrap();
+        // let starting_pixel_truple =  match screen.locate_point(starting_point_collision.clone(), (starting_point_collision.location - self.starting_point).occurence_length())? { 
+        //     RayCollision::Collision(relativ_screen_position,  collision_distance) => (relativ_screen_position.turn_into_screen_point(x_resolution, y_resolution), collision_distance.distance),
+        //     RayCollision::Miss(relativ_screen_position, collision_distance) => (relativ_screen_position.turn_into_screen_point(x_resolution, y_resolution), collision_distance.distance)};
 
-        let ending_point_collision = screen_plain.find_vector_interception(&Point::new(self.ending_point, self.color), &mut (camera_position - self.ending_point)).unwrap();
-        let ending_pixel_truple =  match screen.locate_point(ending_point_collision.clone(), (ending_point_collision.location - self.ending_point).occurence_length())? { 
-            RayCollision::Collision(relativ_screen_position,  collision_distance) => (relativ_screen_position.turn_into_screen_point(x_resolution, y_resolution), collision_distance.distance),
-            RayCollision::Miss(relativ_screen_position,  collision_distance) => (relativ_screen_position.turn_into_screen_point(x_resolution, y_resolution), collision_distance.distance)};
+        let starting_point = Point::new(self.starting_point, self.color);
+        let starting_pixel_truple = starting_point.draw(camera_position, screen, x_resolution, y_resolution)?;
+
+        // let ending_point_collision = screen_plain.find_vector_interception(&Point::new(self.ending_point, self.color), &mut (camera_position - self.ending_point)).unwrap();
+        // let ending_pixel_truple =  match screen.locate_point(ending_point_collision.clone(), (ending_point_collision.location - self.ending_point).occurence_length())? { 
+        //     RayCollision::Collision(relativ_screen_position,  collision_distance) => (relativ_screen_position.turn_into_screen_point(x_resolution, y_resolution), collision_distance.distance),
+        //     RayCollision::Miss(relativ_screen_position,  collision_distance) => (relativ_screen_position.turn_into_screen_point(x_resolution, y_resolution), collision_distance.distance)};
+
+        let ending_point = Point::new(self.ending_point, self.color);
+        let ending_pixel_truple = ending_point.draw(camera_position, screen, x_resolution, y_resolution)?;
 
         let x_distance = ending_pixel_truple.0.x - starting_pixel_truple.0.x;
         let y_distance = ending_pixel_truple.0.y - starting_pixel_truple.0.y;
-        let starting_diameter = ((scale(starting_pixel_truple.1) * 2) as f32 * given_line_with) as i64;
-        let ending_diameter = ((scale(ending_pixel_truple.1) * 2) as f32 * given_line_with) as i64;
-        let start_end_size_differens: i64 = ending_diameter - starting_diameter;
+        // let starting_diameter = ((scale(starting_pixel_truple.1) * 2) as f32 * given_line_with) as i64;
+        // let ending_diameter = ((scale(ending_pixel_truple.1) * 2) as f32 * given_line_with) as i64;
+
+        let starting_diameter = 1 as i64;
+        let ending_diameter = 1 as i64;
+
+        let start_end_size_differens: i64 = 4;
 
         // println!("rendering line with starting size: {} \nand ending size: {}\n meaning a size differers of: {}", starting_diameter, ending_diameter, start_end_size_differens);
         // thread::sleep(Duration::from_secs(2));
@@ -344,7 +393,8 @@ impl Line{
         else if x_distance == 0 {
             for step in (0..(y_distance.abs() + 1)).collect::<Vec<i64>>().iter_mut(){
                 *step = *step * y_distance.abs()/y_distance;
-                let line_with = starting_diameter as f32 + (start_end_size_differens as f32 * (*step as f32 / y_distance as f32) as f32).round() as f32;
+                let line_with = 2;
+                // let line_with = starting_diameter as f32 + (start_end_size_differens as f32 * (*step as f32 / y_distance as f32) as f32).round() as f32;
                 for layer in ((line_with as f32 / -2.0) + 0.1).round() as i64..((line_with as f32 / 2.0) - 0.9).round() as i64{
                     output.push(ScreenPoint{
                     parent: &screen,
@@ -356,7 +406,8 @@ impl Line{
         } else if y_distance == 0 {
             for step in (0..(x_distance.abs() + 1)).collect::<Vec<i64>>().iter_mut(){
                 *step = *step * x_distance.abs()/x_distance;
-                let line_with = starting_diameter as f32 + (start_end_size_differens as f32 * (*step as f32 / x_distance as f32) as f32).round() as f32;
+                let line_with = 2;
+                // let line_with = starting_diameter as f32 + (start_end_size_differens as f32 * (*step as f32 / x_distance as f32) as f32).round() as f32;
                 for layer in ((line_with as f32 / -2.0) + 0.1).round() as i64..((line_with as f32 / 2.0) - 0.9).round() as i64{
                     output.push(ScreenPoint{
                     parent: &screen,
@@ -373,7 +424,8 @@ impl Line{
             if x_y_ratio.abs() > 1.0 {
                 for relativ_x_pixel in (0..(x_distance.abs() + 1)).collect::<Vec<i64>>().iter_mut(){
                     *relativ_x_pixel = *relativ_x_pixel * x_distance.abs()/x_distance;
-                    let line_with = starting_diameter as f32 + (start_end_size_differens as f32 * (*relativ_x_pixel as f32 / x_distance as f32) as f32).round() as f32;
+                    let line_with = 2;
+                    // let line_with = starting_diameter as f32 + (start_end_size_differens as f32 * (*relativ_x_pixel as f32 / x_distance as f32) as f32).round() as f32;
                     let relativ_y_pixel = ((y_x_ratio * relativ_x_pixel.abs() as f32).round() * (x_distance.abs()/x_distance) as f32) as i64;
                     for layer in ((line_with as f32 / -2.0) + 0.1).round() as i64..((line_with as f32 / 2.0) - 0.9).round() as i64{
                         output.push(ScreenPoint{
@@ -387,7 +439,8 @@ impl Line{
             } else {
                 for relativ_y_pixel in (0..(y_distance.abs() + 1)).collect::<Vec<i64>>().iter_mut(){
                     *relativ_y_pixel = *relativ_y_pixel * y_distance.abs()/y_distance;
-                    let line_with = starting_diameter as f32 + (start_end_size_differens as f32 * (*relativ_y_pixel as f32 / y_distance as f32) as f32).round() as f32;
+                    let line_with = 2;
+                    // let line_with = starting_diameter as f32 + (start_end_size_differens as f32 * (*relativ_y_pixel as f32 / y_distance as f32) as f32).round() as f32;
                     let relativ_x_pixel = ((x_y_ratio * relativ_y_pixel.abs()  as f32).round() * (y_distance.abs()/y_distance) as f32) as i64;
                     for layer in ((line_with as f32 / -2.0) + 0.1).round() as i64..((line_with as f32 / 2.0) - 0.9).round() as i64{
                         output.push(ScreenPoint{
@@ -446,6 +499,19 @@ impl Line{
 
         Some(collision)
     }
+
+    pub fn find_intercept_plane(&self, plane: &Plane) -> Option<Vector3D>{
+
+        let line_vector = self.starting_point - self.ending_point;
+        let collsion_point = plane.find_vector_interception(&Point::new(self.ending_point, Color::white()), &mut line_vector.clone()).unwrap().location; // could fuck me in theorie when plane runs parralel to vector
+        let connection_vector = self.starting_point - collsion_point;
+        if !(connection_vector.occurence_length() > connection_vector.occurence_length() ||
+           connection_vector.dot_product(Vector3D::new(1.0, 1.0, 1.0)) / connection_vector.dot_product(Vector3D::new(1.0, 1.0, 1.0)) < 0.0) {
+            Some(collsion_point)
+        } else {
+            None
+        }
+    }
 }
 
 fn relativ_change<T: PartialOrd>(initial_relation_1: T, initial_relation_2: T, current_relation_1: T,  current_relation_2:T) -> bool{
@@ -461,6 +527,7 @@ fn relativ_change<T: PartialOrd>(initial_relation_1: T, initial_relation_2: T, c
 }
 
 #[derive(Debug)]
+#[derive(Clone)]
 pub struct Plane{
     x: f32,
     y: f32,
@@ -510,10 +577,12 @@ impl Plane{
     }
 
     pub fn check_point(&self, point: Vector3D) -> bool {
-        let point_value = point.x * self.x + point.y * self.y + point.z * self.z;
-        if point_value == self.value {
+        let normal_vector = Vector3D::new(self.x, self.y, self.z);
+        let point_value = point.dot_product(normal_vector);
+        if (point_value * 1000.0).round() == (self.value * 1000.0).round() {
             return true;
         }
+        println!("point: {:?} does not lie in plane with normal vector: {:?} \ndot product: {:?} not equal to value: {:?}", point, normal_vector, point_value, self.value);
         false
     }
 
@@ -560,6 +629,7 @@ impl Plane{
 // origin of a SquareSurface is in the lower left corner
 #[derive(Debug)]
 #[derive(Clone)]
+#[derive(PartialEq)]
 pub struct SquareSurface{
     origin: Vector3D,
     with_vector: Vector3D,
@@ -776,6 +846,7 @@ pub enum RayCollision<'a>{
 // origin upper left corner (opposit to lower left corner origin of SquareSurface)
 #[derive(Copy, Clone)]
 #[derive(Debug)]
+#[derive(PartialEq)]
 pub struct  ScreenPoint<'a>{
     pub parent: &'a SquareSurface,
     pub x: i64,
@@ -783,7 +854,8 @@ pub struct  ScreenPoint<'a>{
     pub color: Color
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(PartialEq)]
 pub struct OptimisedScreenPoint{
     color: Color,
     occurence_length: u32,
@@ -800,81 +872,265 @@ impl OptimisedScreenPoint {
         }
     }
 
-    pub fn optimise_screen_point_collection<'a>(screen_point_collection: Vec<Vec<ScreenPoint<'a>>>, screen_height: i64, screen_width: i64, background_color: Color) -> Result<Vec<Vec<OptimisedScreenPoint>>, String>{
+    pub fn optimise_screen_point_collection<'a>(screen_point_collection: Vec<ScreenPoint<'a>>, screen_height: i64, screen_width: i64) -> Result<Vec<Vec<OptimisedScreenPoint>>, String>{
+        let sorted_screen_point_collection = sort_screen_points(screen_point_collection);
+        let filtered_screen_points = sorted_screen_point_collection.iter().filter_map(|list| if (list.iter().all(|element| (element.x < screen_width && element.y < screen_height) && element.y > 0)) {Some(list)} else {None}).collect::<Vec<&Vec<ScreenPoint>>>();
         let mut output = vec!();
-        let mut current_point = ScreenPoint{
-            parent: &SquareSurface::new(Vector3D::new(0.0, 0.0, 0.0), Vector3D::new(0.0, 0.0, 0.0), Vector3D::new(0.0, 0.0, 0.0), 0.0, 0.0, Color::new(0, 0, 0), & mut vec!()),
-            x: 1,
-            y: 0,
-            color: background_color
-        };
+        
         if screen_height < 1 || screen_width < 1 {
             return Err("optimisation of screen points failed because of an inapropiate screen height or width".to_string());
         }
-        for screen_point_list in screen_point_collection.iter().filter(|list| !(list.iter().all(|element| (element.x > screen_width || element.y > screen_height) || element.y == 0))){
-            // println!("currently optimising vec in row: {:?}", screen_point_list[0].y);
-            if !screen_point_list.is_empty(){
-                if !(screen_point_list[0].y > screen_height){
-                    for empty_row_index in 0..(screen_point_list[0].y - current_point.y - 1){
-                        // println!("current screen point y: {}, first list element y: {}, so we are filling {:?} rows", current_point.y, screen_point_list[0].y, 0..(screen_point_list[0].y - current_point.y - 1));
-                        // output.push(vec!(OptimisedScreenPoint::new(background_color, screen_width as u32, current_point.y as u32 + empty_row_index as u32)))
-                    }
-                }
-                if output.is_empty() && screen_point_list[0].y != 1{
-                    for empty_row_index in 0..(screen_point_list[0].y - current_point.y){
-                        // println!("current screen point y: {}, first list element y: {}, so we are filling {:?} rows", current_point.y, screen_point_list[0].y, 0..(screen_point_list[0].y - current_point.y));
-                        // output.push(vec!(OptimisedScreenPoint::new(background_color, screen_width as u32, current_point.y as u32 + empty_row_index as u32)))
-                    }
-                }
-                let mut optimized_line = vec!();
-                let mut streak: u32 = 0;
-                for (_index, screen_point) in screen_point_list.iter().enumerate().filter(|truple| {if truple.0 == 0 {true} else {!(truple.1.x == screen_point_list[truple.0 - 1].x)} }){
-                    // println!("currently optimising point x: {}, in row: {:?}", screen_point.x, screen_point.y);
-                    if (screen_point.x > screen_width || screen_point.y > screen_height) || (screen_point.x == current_point.x && screen_point.y == current_point.y) || screen_point.x == 0{
-                        continue;
-                    }
-                    else {
-                        if current_point.y != screen_point.y {
-                            //optimized_line.push(OptimisedScreenPoint::new(background_color, (screen_point.x - 1) as u32));
-                            current_point = *screen_point;
-                        }
-                        // else 
-                        if current_point.color == screen_point.color && current_point.x + streak as i64 + 1 == screen_point.x{
-                            streak += 1;
-                            // continuing without assinging current_point new point
-                            continue;
-                        } else {
-                            // println!("streak has ended :( \ncurrent color: {:?}, previous color: {:?} \ncurrent x: {:?}, previous x: {:?}", screen_point.color, current_point.color, screen_point.x, current_point.x);
-                            optimized_line.push(OptimisedScreenPoint::new(current_point.color, 1 + streak, current_point.x as u32));
-                            //optimized_line.push(OptimisedScreenPoint::new(background_color, (screen_point.x - (current_point.x + streak as i64 + 1)) as u32));
-                            streak = 0;
-                        }
-                        current_point = *screen_point;
-                    } 
-                    
-                }
-                let mut optimized_line_occurence_length = 0;
-                for element in optimized_line.iter(){
-                    optimized_line_occurence_length += element.occurence_length;
-                }
-                if optimized_line.is_empty(){
-                    output.push(vec!());
-                } else if optimized_line_occurence_length < screen_width as u32{
-                    optimized_line.push(OptimisedScreenPoint::new(current_point.color, 1 + streak, current_point.x as u32));
-                    //optimized_line.push(OptimisedScreenPoint::new(background_color, (screen_width - (current_point.x + streak as i64 + 0)) as u32));
-                    output.push(optimized_line);
-                }
+
+        let mut recent_y = 0;
+        let mut recent_x = None;
+        let mut recent_color = None;
+        for sp_list in filtered_screen_points.iter(){
+
+            let mut current_y = match sp_list.first() {
+                Some(value) => {value.y},
+                _ => {continue;}
+            };
+
+            for _index in recent_y..(current_y - 1) {
+                output.push(vec!());
             }
-        }
-        if output.is_empty() || current_point.y != screen_height{
-            for _empty_row in 0..(screen_height - current_point.y){
-                output.push(vec!())
+
+            let mut streak = 1;
+            let mut current_line = vec!();
+
+            for (index, pixel) in sp_list.iter().enumerate() {
+
+                current_y = pixel.y;
+                let current_x = pixel.x;
+                let current_color = pixel.color;
+
+                if index == 0 || current_y != recent_y {
+                    recent_y = current_y;
+                    recent_x = Some(current_x);
+                    recent_color = Some(current_color);
+                    continue;
+                }
+
+                if current_x == recent_x.unwrap() + streak &&
+                   current_color == recent_color.unwrap() {
+                    streak = streak + 1;
+                    continue;
+                }
+
+                let recent_opt_pixel = OptimisedScreenPoint::new(recent_color.unwrap(), streak as u32, recent_x.unwrap() as u32);
+                streak = 1;
+                
+                current_line.push(recent_opt_pixel);
+
+                recent_y = current_y;
+                recent_x = Some(current_x);
+                recent_color = Some(current_color);
             }
+
+            match recent_x {
+                Some(x) => {current_line.push(OptimisedScreenPoint::new(recent_color.unwrap(), streak as u32, x as u32))},
+                _ => {}
+            }
+            output.push(current_line);
         }
+
+        for _index in recent_y..screen_height {
+            output.push(vec!());
+        }
+
         Ok(output)
     }
+    pub fn layer(mut lower_layer: Vec<Vec<OptimisedScreenPoint>>, mut upper_layer: Vec<Vec<OptimisedScreenPoint>>) -> Result<Vec<Vec<OptimisedScreenPoint>>, Box<dyn std::error::Error>> {
+        // println!("\n\nlayering lower_layer: \n{:?}\nand upper layer: \n{:?}\n\n", lower_layer, upper_layer);
+        let mut combined_layer = vec!();
+        if lower_layer.len() != upper_layer.len() {
+            // println!("\nThe 2 layers are of uneqaul resolution, lower layer: {}, upper layer: {}", lower_layer.len(), upper_layer.len());
+
+            let mut discrepency = upper_layer.len() - lower_layer.len();
+            while discrepency > 0 {
+                lower_layer.push(vec!());
+                discrepency = discrepency - 1;
+            }
+            while discrepency < 0 {
+                upper_layer.push(vec!());
+                discrepency = discrepency + 1;
+            }
+        }
+
+        // TO DO: write as while loop so repetition is possible because issues occure if 2 upper pixels are on 1 lower pixel
+
+        for (index, line) in lower_layer.iter_mut().enumerate() {
+            let upper_line = upper_layer.get_mut(index).unwrap();
+            upper_line.sort_by(|a, b| a.x.cmp(&b.x));
+            line.sort_by(|a, b| a.x.cmp(&b.x));
+            if upper_line.len() == 0 {
+                combined_layer.push(line.clone());
+                continue;
+            } else if line.len() == 0 {
+                combined_layer.push(upper_line.clone());
+                continue;
+            } else {
+                let mut combined_line = vec!();
+
+                let mut lower_index = 0;
+
+                while lower_index < line.len() {
+
+                    let lower_area = line.get_mut(lower_index).unwrap();
+
+                    let upper_area = match upper_line.first() {
+                        Some(x) => {x.clone()},
+                        _ => {combined_line.append(&mut line[lower_index..(line.len())].to_owned()); break;}
+                    };
+
+                    let lower_area_reach = lower_area.x + lower_area.occurence_length - 1;
+                    let upper_area_reach = upper_area.x + upper_area.occurence_length - 1;
+
+                    if upper_area_reach < lower_area.x {
+                        // upper area before lower area
+
+                        combined_line.push(upper_area.clone());
+                        upper_line.remove(0);
+
+                        continue;
+                    }
+
+                    if lower_area_reach < upper_area.x {
+                        // lower area before upper area
+
+                        combined_line.push(lower_area.clone());
+                    }
+
+                    else {
+                        if lower_area_reach <= upper_area_reach {
+                            if lower_area.x >= upper_area.x {
+                                // lower area doesnt stick out
+
+                                //combined_line.push(upper_area.clone());
+                                //upper_line.remove(0);
+                            }
+
+                            else {
+                                // lower sticks out first
+
+                                let mut mod_lower_area = lower_area.clone();
+                                mod_lower_area.occurence_length = upper_area.x - lower_area.x;
+                                if mod_lower_area.occurence_length > 20 || mod_lower_area.occurence_length <= 0 {
+                                    // println!("\nWARNING, something might not be well, heres your debug info dump :3 \nlower_area: {:?}, upper_area: {:?}, mod_lower_area: {:?}, identification Number: 1", lower_area, upper_area, mod_lower_area);
+                                }
+
+                                combined_line.push(mod_lower_area);
+                            }
+                        }
+
+                        else if lower_area.x >= upper_area.x {
+                            // lower sticks out last
+
+                            lower_area.x = upper_area_reach + 1;
+                            lower_area.occurence_length = lower_area_reach - lower_area.x + 1;
+                            if lower_area.occurence_length > 20 || lower_area.occurence_length <= 0 {
+                                // println!("\nWARNING, something might not be well, heres your debug info dump :3 \nlower_area: {:?}, upper_area: {:?}, mod_lower_area: {:?}, identification Number: 2", lower_area, upper_area, mod_lower_area);
+                            }
+                            
+                            combined_line.push(upper_area.clone());
+                            upper_line.remove(0);
+                            
+                            continue;
+                        }
+
+                        else {
+                            // lower sticks out both ends
+
+                            let mut mod_lower_area = lower_area.clone();
+                            mod_lower_area.occurence_length = upper_area.x - lower_area.x;
+                            if mod_lower_area.occurence_length > 20 || mod_lower_area.occurence_length <= 0 {
+                                // println!("\nWARNING, something might not be well, heres your debug info dump :3 \nlower_area: {:?}, upper_area: {:?}, mod_lower_area: {:?}, identification Number: 3", lower_area, upper_area, mod_lower_area);
+                            }
+
+                            lower_area.x = upper_area_reach + 1;
+                            lower_area.occurence_length = lower_area_reach - lower_area.x + 1;
+
+                            combined_line.push(mod_lower_area);
+                            combined_line.push(upper_area.clone());
+                            upper_line.remove(0);
+
+                            continue;
+                        }
+                    }
+
+                    lower_index = lower_index + 1;
+                }
+                
+                combined_line.append(upper_line);
+                combined_layer.push(combined_line);
+            }
+        }
+        Ok(combined_layer)
+    }
+
+    
 }
 
+
+// MIGHT ALL BE AVOIDABLE WITH TRAITS
+#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(PartialEq)]
+pub struct ShadingOptimisedScreenPoints {
+    shading_signature: u32,
+    occurence_length: u32,
+    x: u32
+}
+
+impl ShadingOptimisedScreenPoints {
+
+    fn new(shading_signature: u32, occurence_length: u32, x: u32) -> ShadingOptimisedScreenPoints{
+        ShadingOptimisedScreenPoints {
+            shading_signature,
+            occurence_length,
+            x
+        }
+    }
+
+    fn new_from_optimised(original: OptimisedScreenPoint, shading_signature: u32) -> ShadingOptimisedScreenPoints {
+        ShadingOptimisedScreenPoints::new(shading_signature, original.occurence_length, original.x)
+    }
+
+    pub fn layer(lower_layer: Vec<Vec<ShadingOptimisedScreenPoints>>, mut upper_layer: Vec<Vec<ShadingOptimisedScreenPoints>>) -> Result<Vec<Vec<ShadingOptimisedScreenPoints>>, Box<dyn std::error::Error>> {
+        let mut combined_layer: Vec<Vec<ShadingOptimisedScreenPoints>> = vec!();
+        for (index, line) in lower_layer.iter().enumerate() {
+            if upper_layer.get(index).unwrap().len() == 0 {
+                combined_layer.push(line.clone());
+                continue;
+            } else {
+                let mut combined_line: Vec<ShadingOptimisedScreenPoints> = vec!();
+                for (area_index, lower_area) in line.iter().enumerate() {
+                    match upper_layer.get(index).unwrap().first() {
+                        Some(_) => {},
+                        _ => {combined_line.push(lower_area.clone()); break;}
+                    }
+                    while lower_area.x > upper_layer.get(index).unwrap().first().unwrap().x + upper_layer.get(index).unwrap().first().unwrap().occurence_length {
+                            combined_line.push(upper_layer.get(index).unwrap().first().unwrap().clone());
+                            upper_layer.get_mut(index).unwrap().remove(0);
+                    } if lower_area.x + lower_area.occurence_length < upper_layer.get(index).unwrap().first().unwrap().x {
+                        combined_line.push(lower_area.clone());
+                        continue;
+                    } else {
+                        if lower_area.x < upper_layer.get(index).unwrap().first().unwrap().x {
+                            combined_line.push(ShadingOptimisedScreenPoints::new(lower_area.shading_signature, upper_layer.get(index).unwrap().first().unwrap().x - lower_area.x, lower_area.x));
+                        } else if lower_area.x > upper_layer.get(index).unwrap().first().unwrap().x {
+                            combined_line.push(upper_layer.get(index).unwrap().first().unwrap().clone());
+                            combined_line.push(ShadingOptimisedScreenPoints::new(lower_area.shading_signature, lower_area.occurence_length + lower_area.x - upper_layer.get(index).unwrap().first().unwrap().x + upper_layer.get(index).unwrap().first().unwrap().occurence_length, upper_layer.get(index).unwrap().first().unwrap().x + upper_layer.get(index).unwrap().first().unwrap().occurence_length));
+                            upper_layer.get_mut(index).unwrap().remove(0);
+                        }
+                    }
+                }
+                combined_line.append(upper_layer.get_mut(index).unwrap());
+                combined_layer.push(combined_line);
+            }
+        }
+        Ok(combined_layer)
+    }
+}
 
 pub fn sort_screen_points (mut input_list: Vec<ScreenPoint>) -> Vec<Vec<ScreenPoint>>{
     
@@ -885,7 +1141,7 @@ pub fn sort_screen_points (mut input_list: Vec<ScreenPoint>) -> Vec<Vec<ScreenPo
 
     for value in &input_list{
         if orderd_vec_list.len() > 0{
-            if orderd_vec_list[orderd_vec_list.len() -1][0].y != value.y{
+            if orderd_vec_list[orderd_vec_list.len() -1].first().unwrap().y != value.y{
                 orderd_vec_list.push(input_list.iter().map(|instance| *instance).filter(|instance| instance.y == value.y).collect());
             }
         } else {
@@ -899,6 +1155,7 @@ pub fn sort_screen_points (mut input_list: Vec<ScreenPoint>) -> Vec<Vec<ScreenPo
     for screen_point_list in orderd_vec_list.iter_mut(){
 
         screen_point_list.sort_by(|a, b| a.x.partial_cmp(&b.x).unwrap());
+        *screen_point_list = screen_point_list.iter().enumerate().filter_map({|(index, a)| if index == 0 {return Some(*a);} else if screen_point_list.get(index -1).unwrap() != a {Some(*a)} else {None}}).collect::<Vec<ScreenPoint>>();
     }
 
     orderd_vec_list
@@ -1176,22 +1433,28 @@ pub fn build_math_hashmap() -> HashMap<&'static str, Arc<Mutex<dyn Fn(f32, f32) 
 
 #[derive(Clone)]
 #[derive(Debug)]
-#[derive(PartialEq)]
 pub struct Corner<'a> {
-    position: Vector3D,
-    connection_1: Option<Rc<RefCell<Corner<'a>>>>,
-    connection_2: Option<Rc<RefCell<Corner<'a>>>>,
+    pub position: Vector3D,
+    pub connection_1: Option<Rc<RefCell<Corner<'a>>>>,
+    pub connection_2: Option<Rc<RefCell<Corner<'a>>>>,
 }
 
 impl Corner<'_> {
     
-    fn new<'a> (position: Vector3D, connection_1: Option<Rc<RefCell<Corner<'a>>>>, connection_2: Option<Rc<RefCell<Corner<'a>>>>) -> Corner<'a> {
+    pub fn new<'a> (position: Vector3D, connection_1: Option<Rc<RefCell<Corner<'a>>>>, connection_2: Option<Rc<RefCell<Corner<'a>>>>) -> Corner<'a> {
         // Add conection check
         Corner {
             position,
             connection_1,
             connection_2
         }
+    }
+}
+
+impl PartialEq for Corner<'_> {
+
+    fn eq(&self, other: &Self) -> bool {
+        self.position == other.position
     }
 }
 
@@ -1204,31 +1467,121 @@ pub struct Polygon<'a> {
 
 impl <'a> Polygon<'a> {
 
-    fn new (corners: Vec<Rc<RefCell<Corner<'a>>>>) -> Result<Polygon, Box<dyn std::error::Error>> {
+    pub fn new (corners: Vec<Rc<RefCell<Corner<'a>>>>) -> Result<Polygon, String> {
+        // println!("creating Polygon");
 
         // checking if Polygon  is valid by verifying each corner is connected to 2 other corners
-        for corner in corners.iter() {
+        for (index_1, corner) in corners.iter().enumerate() {
+            // println!("\nchecking validity of a corner");
             let mut connection_counter = 0;
-            for connection in corners.iter() {
-                if corner.borrow().connection_1.clone().unwrap() == *connection || corner.borrow().connection_2.clone().unwrap() == *corner {
+            for (index_2, connection) in corners.iter().enumerate() {
+                // println!("comparing corner to other corner");
+                if index_1 == index_2 {
+
+                } else if corner.borrow().connection_1.clone().unwrap().borrow().position == connection.borrow().position || corner.borrow().connection_2.clone().unwrap().borrow().position == connection.borrow().position {
+                    // println!("a compareson was completed");
                     connection_counter += 1;
                 }
             }
             if connection_counter != 2 {
-                return Err(Box::new(std::fmt::Error::default()))
+                return Err("Not all corners are properly connected, cant make polygon :(".to_string())
             }
         }
         if corners.len() < 3 {
-            return Err(Box::new(std::fmt::Error::default()))
+            return Err("to few corners to make polygon :(".to_string())
         }
         Ok(Polygon {
             corners
         })
     }
 
+    pub fn new_from_ordered (corners: Vec<Vector3D>) -> Result<Polygon<'a>, String> {
+        // println!("creating Polygon");
+
+        // checking if positions are planenar
+        if corners.len() < 3 {
+            return Err("to few corners for polygon creation".to_string());
+        } else {
+            let plane = Plane::new_from_points(corners.get(1).unwrap().clone(), corners.get(2).unwrap().clone(), corners.get(0).unwrap().clone())?;
+            for corner in corners.iter() {
+                if !plane.check_point(*corner) {
+                    return Err("corners are not planenar".to_string());
+                }
+            }
+        }
+
+        let mut corner_structs = vec!();
+        for corner in corners {
+            let corner_struct = Corner::new(corner, None, None);
+            corner_structs.push(Rc::new(RefCell::new(corner_struct)));
+        }
+
+        for (index, corner_struct) in corner_structs.iter().enumerate() {
+            let mut next_coner = corner_structs.get(index + 1);
+            if next_coner == None {
+                next_coner = corner_structs.first();
+            }
+            let mut previous_coner = None;
+            if index > 0 {
+                previous_coner = corner_structs.get(index - 1);
+            }
+            if previous_coner == None {
+                previous_coner = corner_structs.last();
+            }
+            corner_struct.borrow_mut().connection_2 = Some(Rc::clone(next_coner.unwrap()));
+            corner_struct.borrow_mut().connection_1 = Some(Rc::clone(previous_coner.unwrap()));
+        }
+
+        Ok(Polygon::new(corner_structs)?)
+    }
+ 
+    pub fn center_position (&self) -> Vector3D {
+        let mut corner_sum = Vector3D::origin();
+        for corner in self.corners.iter() {
+            corner_sum = corner_sum + corner.borrow().position;
+        }
+        corner_sum * (1.0 /self.corners.len() as f32)
+    }
+
+    pub fn get_plane (&self) -> Result<Plane, Box<dyn std::error::Error>> {
+        let normal = (self.center_position() - self.corners.get(0).unwrap().borrow().position).get_orthagonal(&(self.center_position() - self.corners.get(1).unwrap().borrow().position))?;
+        let value = normal.dot_product(self.corners.get(0).unwrap().borrow().position);
+
+        Ok(Plane {
+            x: normal.x,
+            y: normal.y,
+            z: normal.z,
+            value
+        })
+    }
+
+    pub fn create_cown (&self, pyramid_peak: Vector3D) -> Result<Vec<Plane>, String> {
+        // let mut sides = vec!();
+        let mut previous_corner = None;
+        let mut current_corner = self.corners.first().unwrap().borrow();
+        let mut sides = vec!();
+        loop {
+            let mut next_corner = current_corner.connection_1.clone();
+            if next_corner == previous_corner {
+                next_corner = current_corner.connection_2.clone();
+            }
+            let spanning_vector_1 = (current_corner.position - pyramid_peak).normalize();
+            let spanning_vector_2 = (next_corner.clone().unwrap().borrow().position - pyramid_peak).normalize();
+
+            let current_side = Plane::new_from_points(pyramid_peak, (pyramid_peak + spanning_vector_1), (pyramid_peak + spanning_vector_2))?;
+            sides.push(current_side);
+
+            if next_corner.unwrap().borrow().clone() == self.corners.first().unwrap().borrow().clone() {
+                //last iteration, went full circle
+                break;
+            }
+        }
+        Ok(sides)
+    }
+
     // Will have to rework corners to work with shared ownership, could have had this though sooner lmao
 
-    fn cut (mut self, plane: Plane) -> Vec<Polygon<'a>> {
+    pub fn cut (mut self, plane: Plane) -> Vec<Polygon<'a>> {
         let polygon_plane = Plane::new_from_points(self.corners.get(0).unwrap().borrow().position, self.corners.get(1).unwrap().borrow().position, self.corners.get(2).unwrap().borrow().position).unwrap();
         let cuting_line = polygon_plane.find_plane_interception(plane);
         let mut cut_polygons = vec!();
@@ -1298,8 +1651,8 @@ impl <'a> Polygon<'a> {
 
             if seperated_corners.len() != 0 && collision_found == false {
                 // should already clear seperated_corners
-                unclosed_polygons.push(seperated_corners);
-                break;
+                unclosed_polygons.push(seperated_corners.clone());
+                seperated_corners.clear();
             }
 
             if current_corner == Rc::clone(self.corners.get(0).unwrap()) && !loop_start {
@@ -1325,4 +1678,279 @@ impl <'a> Polygon<'a> {
         }
         cut_polygons
     }
+
+    // not rendering hollow as of now
+    pub fn draw (&self, screen: &SquareSurface, camera_position: Vector3D, x_resolution: u32, y_resolution: u32, color: Color) -> Result<Vec<Vec<OptimisedScreenPoint>>, String> {
+        let mut current_corner = Rc::clone(self.corners.get(1).unwrap());
+        let mut previous_corner = self.corners.get(1).unwrap().borrow().connection_2.clone().unwrap();
+        let mut start = true;
+        let mut screenpoints = vec!();
+
+        loop {
+            if current_corner == *self.corners.get(1).unwrap() && !start {
+                break;
+            }
+            start = false;
+
+            let connection_line = Line::new(previous_corner.borrow().position, current_corner.borrow().position, color);
+            let mut new_screenpoints = connection_line.render_line(screen, camera_position, x_resolution, y_resolution, 1.0)?;
+            screenpoints.append(&mut new_screenpoints);
+
+            if previous_corner != current_corner.borrow().connection_1.clone().unwrap() {
+                let switcher = Rc::clone(&current_corner);
+                current_corner = Rc::clone(&switcher.borrow().connection_1.clone().unwrap());
+                previous_corner = Rc::clone(&switcher);
+            } else if previous_corner != current_corner.borrow().connection_2.clone().unwrap() {
+                let switcher = Rc::clone(&current_corner);
+                current_corner = Rc::clone(&switcher.borrow().connection_2.clone().unwrap());
+                previous_corner = Rc::clone(&switcher);
+            } else {
+                return Err("invalid Polygon".to_string());
+            }
+
+            // println!("looping the polygon edge draw");
+        }
+
+        let mut optimized_screenpoints = OptimisedScreenPoint::optimise_screen_point_collection(screenpoints, y_resolution as i64, x_resolution as i64).unwrap();
+
+        Ok(optimized_screenpoints)
+    }
+
+    pub fn draw_full (&self, screen: &SquareSurface, camera_position: Vector3D, x_resolution: u32, y_resolution: u32, color: Color) -> Result<Vec<Vec<OptimisedScreenPoint>>, String> {
+        let mut optimized_screenpoints = self.draw(screen, camera_position, x_resolution, y_resolution, color)?;
+        let mut filled_optimized_screenpoints = vec!();
+
+        for line in optimized_screenpoints.iter_mut() {
+
+            let mut filled_line = vec!();
+
+            if line.len() == 1 {
+                filled_line.push(line.first().unwrap().clone());
+            } 
+            
+            else {
+
+                if line.len() % 2 != 0 {
+
+                    line.remove(1);
+                    // return Err("cannot fill line with uneven number of boundaries".to_string());
+                }
+
+                for (index, pixel) in line.iter().enumerate() {
+
+                    if (index % 2) == 0 {
+                        continue;
+                    }
+
+                    let recent_pixel = match line.get(index - 1) {
+                        Some(p) => {p},
+                        _ => {return Err("Something went wrong during filled line creation event though it shouldnt have been able to".to_string());}
+                    };
+
+                    let pixel_bridge = OptimisedScreenPoint::new(color, pixel.x - recent_pixel.x + 1, recent_pixel.x);
+                    filled_line.push(pixel_bridge);
+                }
+            }
+
+            filled_optimized_screenpoints.push(filled_line);
+        }
+
+        Ok(filled_optimized_screenpoints)
+    }
+
+    pub fn shading_index_draw (&self, screen: &SquareSurface, camera_position: Vector3D, x_resolution: u32, y_resolution: u32, shading_index: u32) -> Result<Vec<Vec<ShadingOptimisedScreenPoints>>, String> {
+        let unshaded_result = self.draw(screen, camera_position, x_resolution, y_resolution, Color::black())?;
+        let mut result = vec!();
+        for line in unshaded_result {
+            let mut converted_line = vec!();
+            for entry in line {
+                converted_line.push(ShadingOptimisedScreenPoints::new_from_optimised(entry, shading_index));
+            }
+            result.push(converted_line);
+        }
+        return Ok(result)
+    }
+
+    pub fn render (&self, screen: &SquareSurface, camera_position: Vector3D, x_resolution: u32, y_resolution: u32, color: Color, lightsource: Vector3D) -> Result<Vec<Vec<OptimisedScreenPoint>>, String> {
+        let unshaded_render = self.draw(screen, camera_position, x_resolution, y_resolution, color);
+        // let mut corner_lithing = vec!();
+
+        let orientation_corner = self.corners.get(0).unwrap().borrow();
+
+        let orientation_corner_point = Point::new(orientation_corner.position, color);
+        let (orientation_corner_screenpoint, _) =  orientation_corner_point.draw(camera_position, screen, x_resolution, y_resolution)?;
+        
+        let connection_1_point = Point::new(orientation_corner.connection_1.clone().unwrap().borrow().position, color);
+        let (connection_1_screenpoint, _) =  connection_1_point.draw(camera_position, screen, x_resolution, y_resolution)?;
+
+        let connection_2_point = Point::new(orientation_corner.connection_2.clone().unwrap().borrow().position, color);
+        let (connection_2_screenpoint, _) =  connection_2_point.draw(camera_position, screen, x_resolution, y_resolution)?;
+
+        let connection_1_vector = (orientation_corner_screenpoint.x - connection_1_screenpoint.x, orientation_corner_screenpoint.y - connection_1_screenpoint.y);
+        // let connection_1_lithingshift = lithing_function(orientation_corner.position, self.get_plane().unwrap(), color, lightsource) - lithing_function(orientation_corner.connection_1.clone().unwrap().borrow().position, self.get_plane().unwrap(), color, lightsource);
+        
+
+        // calculate each pixels location as vector combination of 3 connected corners, use vector combination to estimate result
+        // works because simplification of sine at low values to linear function
+        // THIS ONLY WORKS WHEN POLYGONS ARE SMALL ENOUGH => Angles to lightsource only change slightly
+        // nvm, just gonna make it so that we use triangles for everything, makes a lot of shit way easier
+
+        Err("sorry, WIP :3".to_string())
+    }
+}
+
+// pub fn triangualize_corners (corners: Vec<Corner>)
+// need to find "save" planes, any plane including four or more corners
+
+// assumes all polygons are of simular size
+// assumes all polygons are properly cut and dont collide
+// doesnt adress eitehr issue in the name of performance -> easier to calculate once during Model creation rather then during every render
+pub fn determin_illumination<'a> (mut polygons: Vec<Polygon<'a>>, screen: &SquareSurface, camera_position: Vector3D, x_resolution: u32, y_resolution: u32) -> Result<(Vec<Polygon<'a>>, Vec<Polygon<'a>>), String> {
+    polygons.sort_by({|a, b| (camera_position - a.center_position()).occurence_length().abs().total_cmp(&(camera_position - b.center_position()).occurence_length().abs())});
+    polygons.reverse();
+
+    let mut full_draw = polygons.first().unwrap().shading_index_draw(screen, camera_position, x_resolution, y_resolution, 0)?;
+    for (index, polygon) in polygons.iter().enumerate() {
+        full_draw = ShadingOptimisedScreenPoints::layer(full_draw, polygon.shading_index_draw(screen, camera_position, x_resolution, y_resolution, index as u32)?).unwrap();
+    }
+
+    let mut fused_full_draw = vec!();
+    for line in full_draw.iter() {
+        fused_full_draw.append(&mut line.clone());
+    }
+    fused_full_draw.sort_by({|a, b| a.shading_signature.cmp(&b.shading_signature)});
+
+    let mut fully_lit_indexs = vec!();
+    let mut fully_shadowed_indexs = vec!();
+    let mut partially_shadowed_indexs: Vec<(u32, Vec<u32>)> = vec!();
+
+    let mut overshadowed_polygons = vec!();
+    let mut lit_polygons = vec!();
+
+    for (shading_index, polygon) in polygons.iter().enumerate() {
+        let mut final_entry_of_index = 0;
+        let mut current_entry = match fused_full_draw.get(0) {
+            Some(area) => {
+                if area.shading_signature != shading_index as u32 {
+                    fully_shadowed_indexs.push(shading_index);
+                    continue;
+                }
+                area
+            }
+            _ => {
+                fully_shadowed_indexs.push(shading_index);
+                break;
+            }
+        };
+        while shading_index as u32 == current_entry.shading_signature {
+            current_entry = match fused_full_draw.get(final_entry_of_index + 1) {
+                Some(area) => {
+                    if area.shading_signature != shading_index as u32 {
+                        break;
+                    } else {
+                        final_entry_of_index = final_entry_of_index + 1;
+                    }
+                    area
+                }
+                _ => {
+                    break;
+                }
+            };
+        }
+
+        let shading_index_slice = &fused_full_draw[0..final_entry_of_index];
+        let individual_polygon_draw = polygon.shading_index_draw(screen, camera_position, x_resolution, y_resolution, shading_index as u32)?;
+        let mut fused_individual_polygon_draw = vec!();
+
+        for line in individual_polygon_draw.iter() {
+            fused_individual_polygon_draw.append(&mut line.clone());
+        }
+
+        if shading_index_slice == fused_individual_polygon_draw {
+            fully_lit_indexs.push(shading_index);
+        } else {
+            let mut relevant_range = (None, None);
+            for (index, layer) in individual_polygon_draw.iter().enumerate() {
+                if layer.is_empty() {
+                    if relevant_range.0 == None {
+                        continue;
+                    } else {
+                        relevant_range.1 = Some(index);
+                        break;
+                    }
+                } else if relevant_range.0 == None {
+                    relevant_range.0 = Some(index)
+                }
+            }
+            let top_layerd_slice = ShadingOptimisedScreenPoints::layer(full_draw[relevant_range.0.unwrap()..relevant_range.1.unwrap()].to_vec(), individual_polygon_draw[relevant_range.0.unwrap()..relevant_range.1.unwrap()].to_vec()).unwrap();
+            let default_slice = full_draw[relevant_range.0.unwrap()..relevant_range.1.unwrap()].to_vec();
+
+            let mut fused_top_layerd_slice = vec!();
+            for line in top_layerd_slice.iter() {
+                fused_top_layerd_slice.append(&mut line.clone());
+            }
+
+            let mut fused_default_slice = vec!();
+            for line in default_slice.iter() {
+                fused_default_slice.append(&mut line.clone());
+            }
+
+            let mut overshadowing_indexs: Vec<u32> = fused_default_slice.iter().filter({|a| fused_top_layerd_slice.contains(a) || a.shading_signature == shading_index as u32}).map({|a| a.shading_signature}).collect();
+            overshadowing_indexs.sort_by({|a, b| a.cmp(b)});
+            overshadowing_indexs = overshadowing_indexs.iter().enumerate().filter({|(index, a)| if *index == 0 {true} else {overshadowing_indexs.get(index - 1).unwrap() != *a}}).map({|(_index, a)| *a}).collect();
+            partially_shadowed_indexs.push((shading_index as u32, overshadowing_indexs));
+        }
+
+        for (polygon_index, shadow_indexs) in partially_shadowed_indexs.iter() {
+            let mut polygons_in_light = vec!(polygons.get(*polygon_index as usize).unwrap().clone()); //should be guaranted to work (I think)
+            let mut new_overshadowed_polygons = vec!();
+            for shadow_index in shadow_indexs.iter() {
+                let overshadowing_polygon = polygons.get(*shadow_index as usize).unwrap();
+                let overshadowing_polygon_center = overshadowing_polygon.center_position();
+                let shadow_cone_sides = overshadowing_polygon.create_cown(camera_position)?;
+                let mut cut_lit_polygons = vec!();
+                for polygon in polygons_in_light.iter() {
+                    for side in shadow_cone_sides.iter() {
+                        cut_lit_polygons.append(&mut polygon.clone().cut(side.clone()));
+                    }
+                }
+                let mut new_lit_polygons = vec!();
+                for polygon in cut_lit_polygons.iter() {
+                    let connection_line = Line::new(polygon.center_position(), overshadowing_polygon_center, Color::white());
+                    for side in shadow_cone_sides.iter() {
+                        let collision = connection_line.find_intercept_plane(side);
+                        if collision == None {
+                            new_lit_polygons.push(polygon.clone());
+                        } else {
+                            new_overshadowed_polygons.push(polygon.clone());
+                        }
+                    }
+                }
+                polygons_in_light = new_lit_polygons;
+            }
+            overshadowed_polygons.append(&mut new_overshadowed_polygons);
+            lit_polygons.append(&mut polygons_in_light);
+        }
+    }
+    lit_polygons.append(&mut polygons.clone().iter().enumerate().filter_map(|(index, a)| if fully_lit_indexs.contains(&index) {Some(a.clone())} else {None}).collect());
+    overshadowed_polygons.append(&mut polygons.iter().enumerate().filter_map(|(index, a)| if fully_shadowed_indexs.contains(&index) {Some(a.clone())} else {None}).collect());
+
+    Ok((lit_polygons, overshadowed_polygons))
+}
+
+// shading should happen via shading signature and following comparison of individual drawings with the combined one
+// not in the combined one -> completly overshadowed
+// partially in the combinded one -> precise shadow collision calculations with overlappers
+// completly identical -> completly visible
+
+
+// WIP, this part would be one of the first to write for GPU
+// in theory a lot can be done here to make lithing better
+pub fn lithing_function (position: Vector3D, plane: Plane, plane_color: Color, lightsource: Vector3D) -> Color {
+    let lightray = position - lightsource;
+    let normal = Vector3D::new(plane.x, plane.y, plane.z);
+
+    let factor = (1.0 - lightray.find_angle(normal).sin()).clamp(0.2, 1.0);
+    let result = plane_color * factor;
+    result
 }

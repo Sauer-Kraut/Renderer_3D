@@ -6,6 +6,8 @@ use actix_web::{web, App, HttpResponse, HttpServer, Responder};
 use serde::{Deserialize, Serialize};
 use actix_web::http;
 use core::panic;
+use std::cell::RefCell;
+use std::rc::Rc;
 use std::thread::{self};
 use std::sync::mpsc;
 use actix_files::Files;
@@ -288,7 +290,7 @@ async fn pull_request(info: web::Json<PullReqeustPackage>) -> impl Responder {
         println!("\n{}", "starting to render Vectors".bold());
 
         let line_screen_point_vecs: Vec<Vec<ScreenPoint>> = lines_to_render.iter()
-                                        .map(|line| match line.render_line(&screen, camera_position, resolution_x as u32, resolution_y as u32, 0.8){
+                                        .map(|line| match line.clone().render_line(&screen, camera_position, resolution_x as u32, resolution_y as u32, 0.8){
                                             Ok(value) => value,
                                             Err(err) => {error_sender.send(err).unwrap(); panic!()},
                                         })
@@ -316,10 +318,59 @@ async fn pull_request(info: web::Json<PullReqeustPackage>) -> impl Responder {
 
         
 
-        let mut optimised_screen_points = match OptimisedScreenPoint::optimise_screen_point_collection(sort_screen_points(screen_points), resolution_y as i64, resolution_x as i64, Color::new(255, 255, 255)){
+        let mut optimised_screen_points = match OptimisedScreenPoint::optimise_screen_point_collection(screen_points, resolution_y as i64, resolution_x as i64){
             Ok(value) => value,
             Err(err) => {error_sender.send(err).unwrap(); panic!()},
         };
+
+        let mut corners: Vec<Vector3D> = vec!();
+
+        let mut test_tryangular_pyramid = vec!();
+
+        let corner_position_1 = Vector3D::new(4.0, -2.7, -1.0);
+        let corner_position_2 = Vector3D::new(5.0, 3.7, 2.0);
+        let corner_position_3 = Vector3D::new(0.2, -1.5, 1.0);
+        let corner_position_4 = Vector3D::new(5.0, 0.5, 6.0);
+
+        corners.push(corner_position_1);
+        corners.push(corner_position_2);
+        corners.push(corner_position_3);
+        corners.push(corner_position_4);
+        
+        for corner in corners.iter_mut() {
+            // println!("rotating vector");
+            // println!("creating matrix");
+            let rotation_matrix = match string_matrix[0].clone().turn_into_rotation_matrix() {
+                Ok(a) => a,
+                Err(err) => {error_sender.send(err).unwrap(); panic!()}
+            };
+            let rotated_corner = rotation_matrix.multiply(*corner, &info.theta[0]);
+            *corner = rotated_corner;
+        }
+
+        test_tryangular_pyramid.push(Polygon::new_from_ordered(vec!(corners[0], corners[1], corners[2])).unwrap());
+        test_tryangular_pyramid.push(Polygon::new_from_ordered(vec!(corners[1], corners[2], corners[3])).unwrap());
+        test_tryangular_pyramid.push(Polygon::new_from_ordered(vec!(corners[2], corners[3], corners[0])).unwrap());
+        test_tryangular_pyramid.push(Polygon::new_from_ordered(vec!(corners[3], corners[0], corners[1])).unwrap());
+
+        test_tryangular_pyramid.sort_by({|a, b| (camera_position - a.center_position()).occurence_length().abs().total_cmp(&(camera_position - b.center_position()).occurence_length().abs())});
+        test_tryangular_pyramid.reverse();
+
+        //optimised_screen_points = current_entry.draw(&screen, camera_position, resolution_x as u32, resolution_y as u32, lithing_function(current_entry.center_position(), current_entry.get_plane().unwrap(), Color::new(100, 100, 100), camera_position)).unwrap();
+        optimised_screen_points = vec!();
+        for (index, current_entry) in test_tryangular_pyramid.iter().enumerate() {
+            if index < 0 {
+                continue;
+            }
+            let current_lithing_condition = lithing_function(current_entry.center_position(), current_entry.get_plane().unwrap(), Color::new(200 as u8, (50 + index * 50) as u8, 200 as u8), camera_position);
+            let current_lithing_condition = Color::new(200 as u8, (50 + index * 50) as u8, 200 as u8);
+            optimised_screen_points = OptimisedScreenPoint::layer(optimised_screen_points, current_entry.draw_full(&screen, camera_position, resolution_x as u32, resolution_y as u32, current_lithing_condition).unwrap()).unwrap();
+            optimised_screen_points = OptimisedScreenPoint::layer(optimised_screen_points, current_entry.draw(&screen, camera_position, resolution_x as u32, resolution_y as u32, Color::black()).unwrap()).unwrap();
+        }
+
+        // println!("The final optimised screen points are: \n{:?}", optimised_screen_points);
+
+        // optimised_screen_points = test_polygon.draw(&screen, camera_position, resolution_x as u32, resolution_y as u32, Color::black()).unwrap();
 
         // for some reason the screen inverts the y-axis when the screen center is higher then the focus point. might one day acctually fix it but for now this should work
         if screen_center.y > focus_point.y {

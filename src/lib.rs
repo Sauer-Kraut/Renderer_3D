@@ -15,12 +15,20 @@ use tokio::sync::oneshot::error;
 use std::{thread, vec};
 use std::time::Duration;
 use std::collections::HashSet;
+use std::default;
+use std::mem::size_of_val;
+use bytemuck;
+use wgpu::util::DeviceExt;
+use flume;
+use tokio;
 
 
 
 #[derive(PartialEq)]
 #[derive(Copy, Clone)]
 #[derive(Debug, Deserialize, Serialize)]
+#[repr(C)]
+#[derive(bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Vector3D {
     pub x:f32,
     pub y:f32,
@@ -241,17 +249,122 @@ impl Mul<f32> for Vector3D{
 
 
 
+#[derive(PartialEq)]
 #[derive(Copy, Clone)]
 #[derive(Debug, Deserialize, Serialize)]
+#[repr(C)]
+#[derive(bytemuck::Pod, bytemuck::Zeroable)]
+pub struct Vector2D {
+    pub x:f32,
+    pub y:f32
+}
+
+impl Vector2D{
+    
+    pub fn new(x:f32, y:f32) -> Vector2D{
+        Vector2D{
+            x,
+            y
+        }
+    }
+
+    pub fn origin() -> Vector2D{
+        Vector2D{
+            x: 0.0,
+            y: 0.0
+        }
+    }
+
+    pub fn occurence_length(&self) -> f32 {
+        (self.x.powi(2) + self.y.powi(2)).sqrt()
+    }
+
+    pub fn normalize(&mut self) -> Vector2D{
+        let occurence_length = self.occurence_length();
+        
+        if occurence_length != 0.0 {
+            self.x /= occurence_length;
+            self.y /= occurence_length;
+        }
+        *self
+    }
+
+    pub fn dot_product(&self, other: Vector2D) -> f32 {
+        self.x * other.x + self.y * other.y
+    }
+
+    pub fn combinate(&self, other: &Vector2D, target: Vector2D) -> Result<(f32, f32), String> {
+
+        // use cross product
+        if self.clone().normalize() * (self.occurence_length() / self.occurence_length().abs()) == other.clone().normalize() * (other.occurence_length() / other.occurence_length().abs()) {
+            return Err("The 2 vectors provided were not independent".to_string());
+        }
+
+        let matrix = (Vector2D::new(self.x, other.x), 
+                                            Vector2D::new(self.y, other.y));
+
+        let determinant = matrix.0.x * matrix.1.y - matrix.1.x * matrix.1.y;
+        let inverse_matrix = (Vector2D::new(other.y /determinant, -other.x /determinant), 
+                                                    Vector2D::new(-self.y /determinant, self.x /determinant));
+
+        let factor_x = inverse_matrix.0.x * target.x + inverse_matrix.0.y * target.y;
+        let factor_y = inverse_matrix.1.x * target.x + inverse_matrix.1.y * target.y;
+
+        Ok((factor_x, factor_y))
+    }
+}
+
+impl Add for Vector2D{
+    type Output = Self;
+
+    fn add(self, other: Self) -> Self{
+        let return_vector =  Vector2D{
+            x: self.x + other.x,
+            y: self.y + other.y
+        };
+        return_vector
+    }
+}
+
+impl Sub for Vector2D{
+    type Output = Self;
+
+    fn sub(self, other: Self) -> Self{
+        let return_vector =  Vector2D{
+            x: self.x - other.x,
+            y: self.y - other.y
+        };
+        return_vector
+    }
+}
+
+impl Mul<f32> for Vector2D{
+    type Output = Self;
+
+    fn mul(self, factor:f32) -> Self{
+        let return_vector =  Vector2D{
+            x: self.x * factor,
+            y: self.y * factor
+        };
+        return_vector
+    }
+}
+
+
+
+#[derive(Copy, Clone)]
+#[derive(Debug, Deserialize, Serialize)]
+#[repr(C)]
+#[derive(bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Color {
-    red: u8,
-    green: u8,
-    blue: u8
+    red: u32,
+    green: u32,
+    blue: u32
 }
 
 impl Color{
 
-    pub fn new(red: u8, green: u8, blue: u8) -> Color{
+    pub fn new(red: u32, green: u32, blue: u32) -> Color{
         Color{
             red,
             blue,
@@ -273,9 +386,9 @@ impl Mul<f32> for Color{
 
     fn mul(self, factor:f32) -> Self{
         let return_vector =  Color{
-            red: (self.red as f32 * factor).clamp(0.0, 255.0) as u8,
-            green: (self.green as f32 * factor).clamp(0.0, 255.0) as u8,
-            blue: (self.blue as f32 * factor).clamp(0.0, 255.0) as u8
+            red: (self.red as f32 * factor).clamp(0.0, 255.0) as u32,
+            green: (self.green as f32 * factor).clamp(0.0, 255.0) as u32,
+            blue: (self.blue as f32 * factor).clamp(0.0, 255.0) as u32
         };
         return_vector
     }
@@ -307,7 +420,8 @@ impl Point{
 
     pub fn draw<'a> (&'a self, camera_position: Vector3D, screen: &'a SquareSurface, x_resolution: u32, y_resolution: u32) -> Result<(ScreenPoint, f32), String> {
         let point_collision = screen.get_plane().find_vector_interception(self, &mut (camera_position - self.location)).unwrap();
-        let pixel_truple =  match screen.locate_point(point_collision.clone(), (point_collision.location - self.location).occurence_length())? { 
+        let point_collision_location = point_collision.location;
+        let pixel_truple =  match screen.locate_point(point_collision, (point_collision_location - self.location).occurence_length())? { 
             RayCollision::Collision(relativ_screen_position,  collision_distance) => (relativ_screen_position.turn_into_screen_point(x_resolution, y_resolution), collision_distance.distance),
             RayCollision::Miss(relativ_screen_position, collision_distance) => (relativ_screen_position.turn_into_screen_point(x_resolution, y_resolution), collision_distance.distance)};
         Ok(pixel_truple)
@@ -356,33 +470,22 @@ impl Line{
         // println!("starting to render line");
         let mut output = vec!();
 
-        // let screen_plain = screen.get_plane();
-
-        // let starting_point_collision = screen_plain.find_vector_interception(&Point::new(self.starting_point, self.color), &mut (camera_position - self.starting_point)).unwrap();
-        // let starting_pixel_truple =  match screen.locate_point(starting_point_collision.clone(), (starting_point_collision.location - self.starting_point).occurence_length())? { 
-        //     RayCollision::Collision(relativ_screen_position,  collision_distance) => (relativ_screen_position.turn_into_screen_point(x_resolution, y_resolution), collision_distance.distance),
-        //     RayCollision::Miss(relativ_screen_position, collision_distance) => (relativ_screen_position.turn_into_screen_point(x_resolution, y_resolution), collision_distance.distance)};
-
         let starting_point = Point::new(self.starting_point, self.color);
         let starting_pixel_truple = starting_point.draw(camera_position, screen, x_resolution, y_resolution)?;
-
-        // let ending_point_collision = screen_plain.find_vector_interception(&Point::new(self.ending_point, self.color), &mut (camera_position - self.ending_point)).unwrap();
-        // let ending_pixel_truple =  match screen.locate_point(ending_point_collision.clone(), (ending_point_collision.location - self.ending_point).occurence_length())? { 
-        //     RayCollision::Collision(relativ_screen_position,  collision_distance) => (relativ_screen_position.turn_into_screen_point(x_resolution, y_resolution), collision_distance.distance),
-        //     RayCollision::Miss(relativ_screen_position,  collision_distance) => (relativ_screen_position.turn_into_screen_point(x_resolution, y_resolution), collision_distance.distance)};
 
         let ending_point = Point::new(self.ending_point, self.color);
         let ending_pixel_truple = ending_point.draw(camera_position, screen, x_resolution, y_resolution)?;
 
         let x_distance = ending_pixel_truple.0.x - starting_pixel_truple.0.x;
         let y_distance = ending_pixel_truple.0.y - starting_pixel_truple.0.y;
+
         // let starting_diameter = ((scale(starting_pixel_truple.1) * 2) as f32 * given_line_with) as i64;
         // let ending_diameter = ((scale(ending_pixel_truple.1) * 2) as f32 * given_line_with) as i64;
 
-        let starting_diameter = 1 as i64;
-        let ending_diameter = 1 as i64;
+        // let starting_diameter = 1 as i64;
+        // let ending_diameter = 1 as i64;
 
-        let start_end_size_differens: i64 = 4;
+        // let start_end_size_differens: i64 = 4;
 
         // println!("rendering line with starting size: {} \nand ending size: {}\n meaning a size differers of: {}", starting_diameter, ending_diameter, start_end_size_differens);
         // thread::sleep(Duration::from_secs(2));
@@ -502,8 +605,8 @@ impl Line{
 
     pub fn find_intercept_plane(&self, plane: &Plane) -> Option<Vector3D>{
 
-        let line_vector = self.starting_point - self.ending_point;
-        let collsion_point = plane.find_vector_interception(&Point::new(self.ending_point, Color::white()), &mut line_vector.clone()).unwrap().location; // could fuck me in theorie when plane runs parralel to vector
+        let mut line_vector = self.starting_point - self.ending_point;
+        let collsion_point = plane.find_vector_interception(&Point::new(self.ending_point, Color::white()), &mut line_vector).unwrap().location; // could fuck me in theorie when plane runs parralel to vector
         let connection_vector = self.starting_point - collsion_point;
         if !(connection_vector.occurence_length() > connection_vector.occurence_length() ||
            connection_vector.dot_product(Vector3D::new(1.0, 1.0, 1.0)) / connection_vector.dot_product(Vector3D::new(1.0, 1.0, 1.0)) < 0.0) {
@@ -817,7 +920,7 @@ impl<'a> RelativScreenPosition<'a>{
 
     pub fn turn_into_dyn_sized_screen_point(&self, x_resolution: u32, y_resolution: u32, distance: CollisionDistance) -> Vec<ScreenPoint<'a>>{
         let mut output = vec!();
-        let center = self.turn_into_screen_point(x_resolution, y_resolution);
+        // let center = self.turn_into_screen_point(x_resolution, y_resolution);
         // println!("\nsizeing screen point at x:{}, y:{}", self.relativ_with, self.relativ_hight);
 
         let radius: u32 = scale(distance.distance);
@@ -940,6 +1043,7 @@ impl OptimisedScreenPoint {
 
         Ok(output)
     }
+
     pub fn layer(mut lower_layer: Vec<Vec<OptimisedScreenPoint>>, mut upper_layer: Vec<Vec<OptimisedScreenPoint>>) -> Result<Vec<Vec<OptimisedScreenPoint>>, Box<dyn std::error::Error>> {
         // println!("\n\nlayering lower_layer: \n{:?}\nand upper layer: \n{:?}\n\n", lower_layer, upper_layer);
         let mut combined_layer = vec!();
@@ -979,7 +1083,7 @@ impl OptimisedScreenPoint {
                     let lower_area = line.get_mut(lower_index).unwrap();
 
                     let upper_area = match upper_line.first() {
-                        Some(x) => {x.clone()},
+                        Some(x) => {x},
                         _ => {combined_line.append(&mut line[lower_index..(line.len())].to_owned()); break;}
                     };
 
@@ -1163,18 +1267,23 @@ pub fn sort_screen_points (mut input_list: Vec<ScreenPoint>) -> Vec<Vec<ScreenPo
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-pub struct PullReqeustPackage {
+pub struct PullReqeustRecvPackage {
     pub title: String,
     pub description: String,      //Karina says this would be beneficial
     pub resolution: (u64, u64),
     pub matrix: Vec<StringRotationMatrix>,
     pub theta: Vec<f32>,
-    pub vectors: Vec<Vector3D>,
-    pub vector_colors: Vec<Color>,
-    pub layers: Vec<f32>,
     pub camera_position: Vector3D,
     pub focus_point: Vector3D,
-    pub color_list: Vec<Vec<OptimisedScreenPoint>>,
+    pub fov: f32,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct PullReqeustSendPackage {
+    pub title: String,
+    pub description: String,      //Karina says this would be beneficial
+    pub resolution: (u16, u16),
+    pub color_list: Vec<u8>,
     pub error: String
 }
 
@@ -1458,6 +1567,47 @@ impl PartialEq for Corner<'_> {
     }
 }
 
+#[derive(Clone, Copy)]
+#[derive(Debug)]
+#[derive(PartialEq)]
+#[repr(C)]
+#[derive(bytemuck::Pod, bytemuck::Zeroable)]
+pub struct TriangleCorner {
+    pub position: Vector3D,
+    pub normal: Vector3D,
+    pub texture_position: Vector2D
+}
+
+impl TriangleCorner {
+
+    pub fn new (position: Vector3D, normal: Vector3D, texture_position: Vector2D) -> TriangleCorner {
+        TriangleCorner {
+            position,
+            normal,
+            texture_position
+        }
+    }
+
+    pub fn layout() -> wgpu::VertexBufferLayout<'static> {
+        wgpu::VertexBufferLayout {
+            array_stride: std::mem::size_of::<TriangleCorner>() as wgpu::BufferAddress,
+            step_mode: wgpu::VertexStepMode::Vertex,
+            attributes: &[wgpu::VertexAttribute {
+                offset: 0,
+                shader_location: 0,
+                format: wgpu::VertexFormat::Float32x3
+            }, wgpu::VertexAttribute {
+                offset: std::mem::size_of::<Vector3D>() as wgpu::BufferAddress,
+                shader_location: 1,
+                format: wgpu::VertexFormat::Float32x3
+            }, wgpu::VertexAttribute {
+                offset: (std::mem::size_of::<Vector3D>() * 2) as wgpu::BufferAddress,
+                shader_location: 2,
+                format: wgpu::VertexFormat::Float32x2
+            }]
+        }
+    }
+}
 
 #[derive(Clone)]
 #[derive(Debug)]
@@ -1468,9 +1618,9 @@ pub struct Polygon<'a> {
 impl <'a> Polygon<'a> {
 
     pub fn new (corners: Vec<Rc<RefCell<Corner<'a>>>>) -> Result<Polygon, String> {
-        // println!("creating Polygon");
+        // println!("creating Triangle");
 
-        // checking if Polygon  is valid by verifying each corner is connected to 2 other corners
+        // checking if Triangle  is valid by verifying each corner is connected to 2 other corners
         for (index_1, corner) in corners.iter().enumerate() {
             // println!("\nchecking validity of a corner");
             let mut connection_counter = 0;
@@ -1484,11 +1634,11 @@ impl <'a> Polygon<'a> {
                 }
             }
             if connection_counter != 2 {
-                return Err("Not all corners are properly connected, cant make polygon :(".to_string())
+                return Err("Not all corners are properly connected, cant make Triangle :(".to_string())
             }
         }
         if corners.len() < 3 {
-            return Err("to few corners to make polygon :(".to_string())
+            return Err("to few corners to Polygon :(".to_string())
         }
         Ok(Polygon {
             corners
@@ -1496,18 +1646,11 @@ impl <'a> Polygon<'a> {
     }
 
     pub fn new_from_ordered (corners: Vec<Vector3D>) -> Result<Polygon<'a>, String> {
-        // println!("creating Polygon");
+        // println!("creating Triangle");
 
         // checking if positions are planenar
         if corners.len() < 3 {
-            return Err("to few corners for polygon creation".to_string());
-        } else {
-            let plane = Plane::new_from_points(corners.get(1).unwrap().clone(), corners.get(2).unwrap().clone(), corners.get(0).unwrap().clone())?;
-            for corner in corners.iter() {
-                if !plane.check_point(*corner) {
-                    return Err("corners are not planenar".to_string());
-                }
-            }
+            return Err("to few corners for Triangle creation".to_string());
         }
 
         let mut corner_structs = vec!();
@@ -1534,18 +1677,82 @@ impl <'a> Polygon<'a> {
 
         Ok(Polygon::new(corner_structs)?)
     }
+}
+
+
+#[derive(Clone)]
+#[derive(Debug)]
+pub struct Triangle<'a> {
+    corners: [TriangleCorner; 3],
+    texture: &'a str
+}
+
+impl <'a> Triangle<'a> {
+
+    pub fn new (corners: Vec<TriangleCorner>, texture: &str) -> Result<Triangle, String> {
+        // println!("creating Triangle");
+
+        if corners.len() != 3 {
+            return Err("to few or to many corners to make Triangle :(".to_string())
+        }
+
+        // checking if each corner is unique
+        for corner in corners.iter() {
+
+            let mut counter = 0;
+
+            for corner_2 in corners.iter() {
+
+                if corner == corner_2 {
+                    counter = counter + 1;
+                }
+            }
+
+            if counter > 1 {
+                return Err("Not all corners are unique :(".to_string())
+            }
+        }
+
+        let corner_array = [corners[0].clone(), corners[1].clone(), corners[2].clone()];
+        
+        Ok(Triangle{
+            corners: corner_array,
+            texture
+        })
+    }
+
+    pub fn flatten(faces: Vec<Triangle>) -> (Vec<TriangleCorner>, Vec<u32>) {
+        let mut indexes = vec!();
+        let mut shader_triangles = vec!();
+
+        for triangle in faces {
+
+            let mut texture_reference: u32 = 0;
+
+            shader_triangles.append(&mut triangle.corners.to_vec());
+            
+            let current_index_length = indexes.len();
+            for index in 0..3 {
+                indexes.push((current_index_length + index) as u32);
+            }
+        }
+
+        //println!("flattend triangles: {:?}", (shader_triangles.clone(), indexes.clone()));
+
+        (shader_triangles, indexes)
+    }
  
     pub fn center_position (&self) -> Vector3D {
         let mut corner_sum = Vector3D::origin();
         for corner in self.corners.iter() {
-            corner_sum = corner_sum + corner.borrow().position;
+            corner_sum = corner_sum + corner.position;
         }
         corner_sum * (1.0 /self.corners.len() as f32)
     }
 
     pub fn get_plane (&self) -> Result<Plane, Box<dyn std::error::Error>> {
-        let normal = (self.center_position() - self.corners.get(0).unwrap().borrow().position).get_orthagonal(&(self.center_position() - self.corners.get(1).unwrap().borrow().position))?;
-        let value = normal.dot_product(self.corners.get(0).unwrap().borrow().position);
+        let normal = (self.center_position() - self.corners.get(0).unwrap().position).get_orthagonal(&(self.center_position() - self.corners.get(1).unwrap().position))?;
+        let value = normal.dot_product(self.corners.get(0).unwrap().position);
 
         Ok(Plane {
             x: normal.x,
@@ -1556,162 +1763,113 @@ impl <'a> Polygon<'a> {
     }
 
     pub fn create_cown (&self, pyramid_peak: Vector3D) -> Result<Vec<Plane>, String> {
-        // let mut sides = vec!();
-        let mut previous_corner = None;
-        let mut current_corner = self.corners.first().unwrap().borrow();
+
         let mut sides = vec!();
-        loop {
-            let mut next_corner = current_corner.connection_1.clone();
-            if next_corner == previous_corner {
-                next_corner = current_corner.connection_2.clone();
-            }
+        
+        for index in 0..3 {
+
+            let current_corner = self.corners.get(index % 3).unwrap();
+            let next_corner = self.corners.get((index + 1) % 3).unwrap();
+
             let spanning_vector_1 = (current_corner.position - pyramid_peak).normalize();
-            let spanning_vector_2 = (next_corner.clone().unwrap().borrow().position - pyramid_peak).normalize();
+            let spanning_vector_2 = (next_corner.position - pyramid_peak).normalize();
 
-            let current_side = Plane::new_from_points(pyramid_peak, (pyramid_peak + spanning_vector_1), (pyramid_peak + spanning_vector_2))?;
-            sides.push(current_side);
-
-            if next_corner.unwrap().borrow().clone() == self.corners.first().unwrap().borrow().clone() {
-                //last iteration, went full circle
-                break;
-            }
+            let side = Plane::new_from_points(pyramid_peak, pyramid_peak + spanning_vector_1, pyramid_peak + spanning_vector_2)?;
+            sides.push(side);
         }
+        
         Ok(sides)
     }
 
     // Will have to rework corners to work with shared ownership, could have had this though sooner lmao
 
-    pub fn cut (mut self, plane: Plane) -> Vec<Polygon<'a>> {
-        let polygon_plane = Plane::new_from_points(self.corners.get(0).unwrap().borrow().position, self.corners.get(1).unwrap().borrow().position, self.corners.get(2).unwrap().borrow().position).unwrap();
-        let cuting_line = polygon_plane.find_plane_interception(plane);
-        let mut cut_polygons = vec!();
+    pub fn cut (self, plane: Plane) -> Result<Vec<Triangle<'a>>, String> {
+        let self_plane = self.get_plane().unwrap();
+        let cuting_line = self_plane.find_plane_interception(plane);
+        let mut cut_triangles = vec!();
 
         // Placeholder corner for later use, connections dont mean shit
-        let mut previous_corner = Rc::clone(&self.corners.get(0).unwrap().borrow().connection_2.clone().unwrap());
-        let mut current_corner = Rc::clone(self.corners.get(0).unwrap());
-        let mut collision_found = false;
-        let mut seperated_corners = vec!();
-        let mut remaining_corners = vec!();
-        let mut unclosed_polygons = vec!();
-        let mut loop_start = true;
+        let mut cuts = vec!();
+        let mut severed_corners = vec!();
         
-        loop {
-            {
-            if loop_start {
-                break;
-            }
+        for index in 0..3 {
 
-            let connection = Line::new(previous_corner.borrow().position, current_corner.borrow().position, Color::white());
+            let current_corner = self.corners.get(index % 3).unwrap();
+            let next_corner = self.corners.get((index + 1) % 3).unwrap();
+
+            let connection = Line::new(current_corner.position, next_corner.position, Color::white());
             let collision = connection.find_intercept(&cuting_line);
 
             match collision {
-                Some(location) => { 
-                    let mut connection_1 = None;
-                    let mut connection_2 = None;
-                    if collision_found {
-                        connection_1 = Some(Rc::clone(&previous_corner));
-                    } else {
-                        connection_1 = Some(Rc::clone(&current_corner));
-                    }
-                    let collision_corner = Rc::new(RefCell::new(Corner::new(location, connection_1, connection_2)));
+                Some(location) => {
 
-                    collision_found = !collision_found;
+                    let relative_collision_length = (current_corner.position - location).occurence_length() / (current_corner.position - next_corner.position).occurence_length();
+                    let texture_anchor_vector = current_corner.texture_position - next_corner.texture_position;
+                    let cut_texture_anchor = next_corner.texture_position + texture_anchor_vector * relative_collision_length;
 
-                    if current_corner.borrow().connection_1.clone().unwrap() == previous_corner {
-                        if collision_found {
-                            current_corner.borrow_mut().connection_1 = Some(Rc::clone(&collision_corner));
-                        }
-                    } else {
-
-                    }
-
-                    seperated_corners.push(Rc::clone(&collision_corner));
-                    remaining_corners.push(collision_corner.clone());
+                    let cut_corner = TriangleCorner::new(location, current_corner.normal, cut_texture_anchor);
+                    cuts.push(cut_corner);
                 },
                 _ => {}
             }
-            }
-            loop_start = false;  
 
-            if collision_found {
-                seperated_corners.push(Rc::clone(&current_corner));
-            } else {
-                remaining_corners.push(Rc::clone(&current_corner))
-            }
+            if cuts.len() % 2 != 0 {
 
-            if previous_corner == current_corner.borrow().connection_1.clone().unwrap() {
-                let switcher = Rc::clone(&current_corner);
-                current_corner = Rc::clone(&switcher.borrow().connection_1.clone().unwrap());
-                previous_corner = Rc::clone(&switcher);
-            } else {
-                let switcher = Rc::clone(&current_corner);
-                current_corner = Rc::clone(&switcher.borrow().connection_2.clone().unwrap());
-                previous_corner = Rc::clone(&switcher);
-            }
-
-            if seperated_corners.len() != 0 && collision_found == false {
-                // should already clear seperated_corners
-                unclosed_polygons.push(seperated_corners.clone());
-                seperated_corners.clear();
-            }
-
-            if current_corner == Rc::clone(self.corners.get(0).unwrap()) && !loop_start {
-                break;
+                severed_corners.push(next_corner);
             }
         }
-        unclosed_polygons.push(remaining_corners);
 
-        for polygone in unclosed_polygons.iter() {
-            let mut finished_polygone = vec!(); 
-            for (index, corner) in polygone.iter().enumerate() {
-                match polygone.get(index - 1) {
-                    Some(previous) => {corner.borrow_mut().connection_1 = Some(Rc::clone(&previous))},
-                    _ => {corner.borrow_mut().connection_1 = Some(Rc::clone(&polygone.last().unwrap()))}
-                }
-                match polygone.get(index + 1) {
-                    Some(next) => {corner.borrow_mut().connection_2 = Some(Rc::clone(&next))},
-                    _ => {corner.borrow_mut().connection_2 = Some(Rc::clone(&polygone.first().unwrap()))}
-                }
-                finished_polygone.push(Rc::clone(&corner));
-            }
-            cut_polygons.push(Polygon::new(finished_polygone).unwrap());
+        if cuts.len() % 2 != 0 {
+
+            return Err("triangle was only partially cut, should be impossible".to_string());
         }
-        cut_polygons
+
+        let remaining_corners = severed_corners.iter().filter(|a| !severed_corners.contains(a)).map(|a| *a).collect::<Vec<&TriangleCorner>>();
+
+        for corner_set in vec!(severed_corners, remaining_corners) {
+
+            if corner_set.len() == 1 {
+
+                let mut corners = vec!((**corner_set.first().unwrap()).clone());
+                corners.append(&mut cuts);
+                let triangle = Triangle::new(corners, self.texture)?;
+
+                cut_triangles.push(triangle);
+            } 
+
+            else {
+
+                // This might cause problems where the 2 triangles produced overlap, or it might not but I didnt take the time to think about it hard enough
+
+                let corners_1 = vec!(corner_set[0].clone(), corner_set[1].clone(), cuts[0].clone());
+                let corners_2 = vec!(corner_set[1].clone(), cuts[1].clone(), cuts[0].clone());
+
+                for corners in vec!(corners_1, corners_2) {
+
+                    let triangle = Triangle::new(corners, self.texture)?;
+                    cut_triangles.push(triangle);
+                }
+            }
+        }
+
+        Err("under construction :3".to_string())
     }
 
-    // not rendering hollow as of now
     pub fn draw (&self, screen: &SquareSurface, camera_position: Vector3D, x_resolution: u32, y_resolution: u32, color: Color) -> Result<Vec<Vec<OptimisedScreenPoint>>, String> {
-        let mut current_corner = Rc::clone(self.corners.get(1).unwrap());
-        let mut previous_corner = self.corners.get(1).unwrap().borrow().connection_2.clone().unwrap();
-        let mut start = true;
         let mut screenpoints = vec!();
 
-        loop {
-            if current_corner == *self.corners.get(1).unwrap() && !start {
-                break;
-            }
-            start = false;
+        for index in 0..3 {
 
-            let connection_line = Line::new(previous_corner.borrow().position, current_corner.borrow().position, color);
+            let current_corner = self.corners.get((index) % 3).unwrap();
+            let next_corner = self.corners.get((index + 1) % 3).unwrap();
+
+            let connection_line = Line::new(current_corner.position, next_corner.position, color);
             let mut new_screenpoints = connection_line.render_line(screen, camera_position, x_resolution, y_resolution, 1.0)?;
             screenpoints.append(&mut new_screenpoints);
 
-            if previous_corner != current_corner.borrow().connection_1.clone().unwrap() {
-                let switcher = Rc::clone(&current_corner);
-                current_corner = Rc::clone(&switcher.borrow().connection_1.clone().unwrap());
-                previous_corner = Rc::clone(&switcher);
-            } else if previous_corner != current_corner.borrow().connection_2.clone().unwrap() {
-                let switcher = Rc::clone(&current_corner);
-                current_corner = Rc::clone(&switcher.borrow().connection_2.clone().unwrap());
-                previous_corner = Rc::clone(&switcher);
-            } else {
-                return Err("invalid Polygon".to_string());
-            }
-
-            // println!("looping the polygon edge draw");
         }
 
-        let mut optimized_screenpoints = OptimisedScreenPoint::optimise_screen_point_collection(screenpoints, y_resolution as i64, x_resolution as i64).unwrap();
+        let optimized_screenpoints = OptimisedScreenPoint::optimise_screen_point_collection(screenpoints, y_resolution as i64, x_resolution as i64).unwrap();
 
         Ok(optimized_screenpoints)
     }
@@ -1775,15 +1933,16 @@ impl <'a> Polygon<'a> {
         let unshaded_render = self.draw(screen, camera_position, x_resolution, y_resolution, color);
         // let mut corner_lithing = vec!();
 
-        let orientation_corner = self.corners.get(0).unwrap().borrow();
-
+        let orientation_corner = self.corners.get(0).unwrap();
         let orientation_corner_point = Point::new(orientation_corner.position, color);
         let (orientation_corner_screenpoint, _) =  orientation_corner_point.draw(camera_position, screen, x_resolution, y_resolution)?;
         
-        let connection_1_point = Point::new(orientation_corner.connection_1.clone().unwrap().borrow().position, color);
+        let connection_1 = self.corners.get(1).unwrap();
+        let connection_1_point = Point::new(connection_1.position, color);
         let (connection_1_screenpoint, _) =  connection_1_point.draw(camera_position, screen, x_resolution, y_resolution)?;
 
-        let connection_2_point = Point::new(orientation_corner.connection_2.clone().unwrap().borrow().position, color);
+        let connection_2 = self.corners.get(2).unwrap();
+        let connection_2_point = Point::new(connection_2.position, color);
         let (connection_2_screenpoint, _) =  connection_2_point.draw(camera_position, screen, x_resolution, y_resolution)?;
 
         let connection_1_vector = (orientation_corner_screenpoint.x - connection_1_screenpoint.x, orientation_corner_screenpoint.y - connection_1_screenpoint.y);
@@ -1792,7 +1951,7 @@ impl <'a> Polygon<'a> {
 
         // calculate each pixels location as vector combination of 3 connected corners, use vector combination to estimate result
         // works because simplification of sine at low values to linear function
-        // THIS ONLY WORKS WHEN POLYGONS ARE SMALL ENOUGH => Angles to lightsource only change slightly
+        // THIS ONLY WORKS WHEN TriangleS ARE SMALL ENOUGH => Angles to lightsource only change slightly
         // nvm, just gonna make it so that we use triangles for everything, makes a lot of shit way easier
 
         Err("sorry, WIP :3".to_string())
@@ -1802,16 +1961,16 @@ impl <'a> Polygon<'a> {
 // pub fn triangualize_corners (corners: Vec<Corner>)
 // need to find "save" planes, any plane including four or more corners
 
-// assumes all polygons are of simular size
-// assumes all polygons are properly cut and dont collide
+// assumes all Triangles are of simular size
+// assumes all Triangles are properly cut and dont collide
 // doesnt adress eitehr issue in the name of performance -> easier to calculate once during Model creation rather then during every render
-pub fn determin_illumination<'a> (mut polygons: Vec<Polygon<'a>>, screen: &SquareSurface, camera_position: Vector3D, x_resolution: u32, y_resolution: u32) -> Result<(Vec<Polygon<'a>>, Vec<Polygon<'a>>), String> {
-    polygons.sort_by({|a, b| (camera_position - a.center_position()).occurence_length().abs().total_cmp(&(camera_position - b.center_position()).occurence_length().abs())});
-    polygons.reverse();
+pub fn determin_illumination<'a> (mut triangles: Vec<Triangle<'a>>, screen: &SquareSurface, camera_position: Vector3D, x_resolution: u32, y_resolution: u32) -> Result<(Vec<Triangle<'a>>, Vec<Triangle<'a>>), String> {
+    triangles.sort_by({|a, b| (camera_position - a.center_position()).occurence_length().abs().total_cmp(&(camera_position - b.center_position()).occurence_length().abs())});
+    triangles.reverse();
 
-    let mut full_draw = polygons.first().unwrap().shading_index_draw(screen, camera_position, x_resolution, y_resolution, 0)?;
-    for (index, polygon) in polygons.iter().enumerate() {
-        full_draw = ShadingOptimisedScreenPoints::layer(full_draw, polygon.shading_index_draw(screen, camera_position, x_resolution, y_resolution, index as u32)?).unwrap();
+    let mut full_draw = triangles.first().unwrap().shading_index_draw(screen, camera_position, x_resolution, y_resolution, 0)?;
+    for (index, triangle) in triangles.iter().enumerate() {
+        full_draw = ShadingOptimisedScreenPoints::layer(full_draw, triangle.shading_index_draw(screen, camera_position, x_resolution, y_resolution, index as u32)?).unwrap();
     }
 
     let mut fused_full_draw = vec!();
@@ -1824,10 +1983,10 @@ pub fn determin_illumination<'a> (mut polygons: Vec<Polygon<'a>>, screen: &Squar
     let mut fully_shadowed_indexs = vec!();
     let mut partially_shadowed_indexs: Vec<(u32, Vec<u32>)> = vec!();
 
-    let mut overshadowed_polygons = vec!();
-    let mut lit_polygons = vec!();
+    let mut overshadowed_triangles = vec!();
+    let mut lit_triangles = vec!();
 
-    for (shading_index, polygon) in polygons.iter().enumerate() {
+    for (shading_index, triangle) in triangles.iter().enumerate() {
         let mut final_entry_of_index = 0;
         let mut current_entry = match fused_full_draw.get(0) {
             Some(area) => {
@@ -1859,18 +2018,18 @@ pub fn determin_illumination<'a> (mut polygons: Vec<Polygon<'a>>, screen: &Squar
         }
 
         let shading_index_slice = &fused_full_draw[0..final_entry_of_index];
-        let individual_polygon_draw = polygon.shading_index_draw(screen, camera_position, x_resolution, y_resolution, shading_index as u32)?;
-        let mut fused_individual_polygon_draw = vec!();
+        let individual_triangle_draw = triangle.shading_index_draw(screen, camera_position, x_resolution, y_resolution, shading_index as u32)?;
+        let mut fused_individual_triangle_draw = vec!();
 
-        for line in individual_polygon_draw.iter() {
-            fused_individual_polygon_draw.append(&mut line.clone());
+        for line in individual_triangle_draw.iter() {
+            fused_individual_triangle_draw.append(&mut line.clone());
         }
 
-        if shading_index_slice == fused_individual_polygon_draw {
+        if shading_index_slice == fused_individual_triangle_draw {
             fully_lit_indexs.push(shading_index);
         } else {
             let mut relevant_range = (None, None);
-            for (index, layer) in individual_polygon_draw.iter().enumerate() {
+            for (index, layer) in individual_triangle_draw.iter().enumerate() {
                 if layer.is_empty() {
                     if relevant_range.0 == None {
                         continue;
@@ -1882,7 +2041,7 @@ pub fn determin_illumination<'a> (mut polygons: Vec<Polygon<'a>>, screen: &Squar
                     relevant_range.0 = Some(index)
                 }
             }
-            let top_layerd_slice = ShadingOptimisedScreenPoints::layer(full_draw[relevant_range.0.unwrap()..relevant_range.1.unwrap()].to_vec(), individual_polygon_draw[relevant_range.0.unwrap()..relevant_range.1.unwrap()].to_vec()).unwrap();
+            let top_layerd_slice = ShadingOptimisedScreenPoints::layer(full_draw[relevant_range.0.unwrap()..relevant_range.1.unwrap()].to_vec(), individual_triangle_draw[relevant_range.0.unwrap()..relevant_range.1.unwrap()].to_vec()).unwrap();
             let default_slice = full_draw[relevant_range.0.unwrap()..relevant_range.1.unwrap()].to_vec();
 
             let mut fused_top_layerd_slice = vec!();
@@ -1901,41 +2060,41 @@ pub fn determin_illumination<'a> (mut polygons: Vec<Polygon<'a>>, screen: &Squar
             partially_shadowed_indexs.push((shading_index as u32, overshadowing_indexs));
         }
 
-        for (polygon_index, shadow_indexs) in partially_shadowed_indexs.iter() {
-            let mut polygons_in_light = vec!(polygons.get(*polygon_index as usize).unwrap().clone()); //should be guaranted to work (I think)
-            let mut new_overshadowed_polygons = vec!();
+        for (triangle_index, shadow_indexs) in partially_shadowed_indexs.iter() {
+            let mut triangles_in_light = vec!(triangles.get(*triangle_index as usize).unwrap().clone()); //should be guaranted to work (I think)
+            let mut new_overshadowed_triangles = vec!();
             for shadow_index in shadow_indexs.iter() {
-                let overshadowing_polygon = polygons.get(*shadow_index as usize).unwrap();
-                let overshadowing_polygon_center = overshadowing_polygon.center_position();
-                let shadow_cone_sides = overshadowing_polygon.create_cown(camera_position)?;
-                let mut cut_lit_polygons = vec!();
-                for polygon in polygons_in_light.iter() {
+                let overshadowing_triangle = triangles.get(*shadow_index as usize).unwrap();
+                let overshadowing_triangle_center = overshadowing_triangle.center_position();
+                let shadow_cone_sides = overshadowing_triangle.create_cown(camera_position)?;
+                let mut cut_lit_triangles = vec!();
+                for triangle in triangles_in_light.iter() {
                     for side in shadow_cone_sides.iter() {
-                        cut_lit_polygons.append(&mut polygon.clone().cut(side.clone()));
+                        cut_lit_triangles.append(&mut triangle.clone().cut(side.clone())?);
                     }
                 }
-                let mut new_lit_polygons = vec!();
-                for polygon in cut_lit_polygons.iter() {
-                    let connection_line = Line::new(polygon.center_position(), overshadowing_polygon_center, Color::white());
+                let mut new_lit_triangles = vec!();
+                for triangle in cut_lit_triangles.iter() {
+                    let connection_line = Line::new(triangle.center_position(), overshadowing_triangle_center, Color::white());
                     for side in shadow_cone_sides.iter() {
                         let collision = connection_line.find_intercept_plane(side);
                         if collision == None {
-                            new_lit_polygons.push(polygon.clone());
+                            new_lit_triangles.push(triangle.clone());
                         } else {
-                            new_overshadowed_polygons.push(polygon.clone());
+                            new_overshadowed_triangles.push(triangle.clone());
                         }
                     }
                 }
-                polygons_in_light = new_lit_polygons;
+                triangles_in_light = new_lit_triangles;
             }
-            overshadowed_polygons.append(&mut new_overshadowed_polygons);
-            lit_polygons.append(&mut polygons_in_light);
+            overshadowed_triangles.append(&mut new_overshadowed_triangles);
+            lit_triangles.append(&mut triangles_in_light);
         }
     }
-    lit_polygons.append(&mut polygons.clone().iter().enumerate().filter_map(|(index, a)| if fully_lit_indexs.contains(&index) {Some(a.clone())} else {None}).collect());
-    overshadowed_polygons.append(&mut polygons.iter().enumerate().filter_map(|(index, a)| if fully_shadowed_indexs.contains(&index) {Some(a.clone())} else {None}).collect());
+    lit_triangles.append(&mut triangles.clone().iter().enumerate().filter_map(|(index, a)| if fully_lit_indexs.contains(&index) {Some(a.clone())} else {None}).collect());
+    overshadowed_triangles.append(&mut triangles.iter().enumerate().filter_map(|(index, a)| if fully_shadowed_indexs.contains(&index) {Some(a.clone())} else {None}).collect());
 
-    Ok((lit_polygons, overshadowed_polygons))
+    Ok((lit_triangles, overshadowed_triangles))
 }
 
 // shading should happen via shading signature and following comparison of individual drawings with the combined one
@@ -1950,7 +2109,99 @@ pub fn lithing_function (position: Vector3D, plane: Plane, plane_color: Color, l
     let lightray = position - lightsource;
     let normal = Vector3D::new(plane.x, plane.y, plane.z);
 
-    let factor = (1.0 - lightray.find_angle(normal).sin()).clamp(0.2, 1.0);
+    let factor = (1.0 - lightray.find_angle(normal).cos()).clamp(0.2, 1.0);
     let result = plane_color * factor;
     result
 }
+
+
+
+pub fn create_sphere<'a>(position: Vector3D, size: u32, x_layers: u32, y_layers: u32) -> Vec<Triangle<'a>> {
+
+    let mut verteces = vec!();
+    let mut faces = vec!();
+
+    for y_layer in 0..y_layers {
+
+        let mut layer_verteces = vec!();
+
+        let center = position + Vector3D::new(0.0, 1.0, 0.0) * (((y_layers as f32 / 2.0) - y_layer as f32)) * (1.0 / y_layers as f32) * size as f32 * 2.0;
+        let radius = (y_layer as f32 / y_layers as f32 * 3.141).sin() * size as f32;
+
+
+        for x_layer in 0..x_layers {
+
+            let current_rotation = x_layer as f32 / x_layers as f32 * 2.0 * 3.141;
+            let position_vector = Vector3D::new(
+                current_rotation.sin(),
+                0.0,
+                current_rotation.cos(),
+            ) * radius;
+
+
+            let vertece = center + position_vector;
+            layer_verteces.push(vertece);
+        }
+
+        verteces.push(layer_verteces);
+    }
+
+    for (index, layer) in verteces.iter().enumerate() {
+
+        let mut current_layer = layer;
+        let mut next_layer = match verteces.get(index + 1) {
+            Some(i) => {i},
+            _ => {break;}
+        };
+
+        let mut iterartion = false;
+
+        for _iter in 0..2 {
+            
+            for (v_index, vertece) in current_layer.iter().enumerate() {
+
+                let mut opposing_vertece = next_layer.get(v_index).unwrap();
+
+                if iterartion {
+                    opposing_vertece = match next_layer.get(v_index + 1) {
+                        Some(i) => {i},
+                        _ => {next_layer.first().unwrap()}
+                    };
+                }
+
+                let other_vertece = match current_layer.get(v_index + 1) {
+                    Some(i) => {i},
+                    _ => {current_layer.first().unwrap()}
+                };
+
+                let triangle = match Triangle::new(vec!(
+                    TriangleCorner::new(*vertece, Vector3D::origin(), Vector2D::origin()),
+                    TriangleCorner::new(*opposing_vertece, Vector3D::origin(), Vector2D::origin()),
+                    TriangleCorner::new(*other_vertece, Vector3D::origin(), Vector2D::origin())
+                ), "playceholder :3"){
+                    Ok(x) => {x},
+                    _ => {continue;}
+                };
+
+                faces.push(triangle);
+            }
+
+            let swapper = current_layer;
+            current_layer = next_layer;
+            next_layer = swapper;
+            iterartion = true;
+        }
+    }
+
+    faces
+}
+
+
+
+
+
+
+
+// struct Texture {
+//     pixels: Vec<Vec<ScreenPoint>>
+// }

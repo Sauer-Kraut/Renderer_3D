@@ -58,8 +58,5 @@ struct FragmentInput {
 @fragment
 fn fs_main(@builtin(position) clip_pos: vec4<f32>, input: FragmentInput) -> @location(0) vec4<f32>{
 
-    return vec4((clip_pos.z - 0.8) * 5.0, 0.0, 1.0 - ((clip_pos.z - 0.8) * 5.0), 255.0);
-    
-
-    // return vec4(input.barycentrics.x, 0.0, input.barycentrics.z, 255.0);
+    return vec4(0.0, 0.0, 0.0, 255.0);
 }

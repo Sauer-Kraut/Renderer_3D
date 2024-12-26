@@ -1781,7 +1781,7 @@ impl <'a> Triangle<'a> {
         Ok(sides)
     }
 
-    // Will have to rework corners to work with shared ownership, could have had this though sooner lmao
+    // Will have to rework corners to work with shared ownership, could have had this thought sooner lmao
 
     pub fn cut (self, plane: Plane) -> Result<Vec<Triangle<'a>>, String> {
         let self_plane = self.get_plane().unwrap();

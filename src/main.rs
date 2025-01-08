@@ -186,14 +186,21 @@ async fn pull_request(info: web::Json<PullReqeustRecvPackage>, data: web::Data<A
         );
 
         let matrix = create_transformation_matrix(camera.clone());
-        for corner in corners.iter() {
-            let mut transformed_corner = matrix * (corner.position, 1.0 as f32);
-            transformed_corner.0 = transformed_corner.0 * (1.0/transformed_corner.1);
-            println!("{:?}", transformed_corner);   
-            // let test_output = matrix * (Vector3D::new(2.0, -1.0, 3.0), 1.0 as f32);
-            // println!("test output: {:?}", test_output);
-        }
+        // for corner in corners.iter() {
+        //     let mut transformed_corner = matrix * (corner.position, 1.0 as f32);
+        //     transformed_corner.0 = transformed_corner.0 * (1.0/transformed_corner.1);
+        //     println!("{:?}", transformed_corner);   
+        //     // let test_output = matrix * (Vector3D::new(2.0, -1.0, 3.0), 1.0 as f32);
+        //     // println!("test output: {:?}", test_output);
+        // }
         println!("matrix:  {:?}", matrix.matrix);
+
+        let mut model = Model::import_obj("static/assets/models/Cylinder/Cylinder.obj").unwrap();
+        for face in model.faces.iter_mut() {
+            for corner in face.corners.iter_mut() {
+                corner.position = Vector3D::new(corner.position.x * 3.0, corner.position.y * 3.0, corner.position.z * 0.1);
+            }
+        }
 
 
         println!("going to start awaiting lock");
@@ -208,7 +215,7 @@ async fn pull_request(info: web::Json<PullReqeustRecvPackage>, data: web::Data<A
         // Perform GPU rendering
         println!("starting to render");
         let shader_result = gpu_instructions::gpu_render_shader(
-            test_tryangular_pyramid,
+            model.faces,
             resolution_fit.0 as u32,
             resolution_fit.1 as u32,
             renderer_recources,

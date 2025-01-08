@@ -1,5 +1,6 @@
 use crate::calc_structs::*;
 use std::cell::RefCell;
+use std::io::BufRead;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 
@@ -188,7 +189,7 @@ impl TriangleCorner {
 #[derive(Clone)]
 #[derive(Debug)]
 pub struct Triangle<'a> {
-    corners: [TriangleCorner; 3],
+    pub corners: [TriangleCorner; 3],
     texture: &'a str
 }
 
@@ -494,7 +495,7 @@ pub struct Object<'a> {
 #[derive(Clone)]
 #[derive(Debug)]
 pub struct Model<'a> {
-    faces: Vec<Triangle<'a>>,
+    pub faces: Vec<Triangle<'a>>,
     texture_path: String
 }
 
@@ -541,8 +542,69 @@ impl <'a> Model<'a> {
         }
     }
 
-    pub fn import_obj(file_path: &str) -> Model {
-        todo!()
+    pub fn import_obj(file_path: &str) -> Result<Model<'a>, Box<dyn std::error::Error>> {
+        let mut faces = vec!();
+        let mut positions = vec!();
+        let mut normals = vec!();
+        let mut texture_positions = vec!();
+
+        let file = std::fs::File::open(file_path)?;
+        let reader = std::io::BufReader::new(file);
+
+        for line in reader.lines() {
+            let line = line?;
+            let parts: Vec<&str> = line.split_whitespace().collect();
+
+            match parts.get(0) {
+                Some(&"v") => {
+                    let position = Vector3D::new(
+                        parts[1].parse()?,
+                        parts[2].parse()?,
+                        parts[3].parse()?,
+                    );
+                    positions.push(position);
+                }
+                Some(&"vn") => {
+                    let normal = Vector3D::new(
+                        parts[1].parse()?,
+                        parts[2].parse()?,
+                        parts[3].parse()?,
+                    );
+                    normals.push(normal);
+                }
+                Some(&"vt") => {
+                    let texture_position = Vector2D::new(
+                        parts[1].parse()?,
+                        parts[2].parse()?,
+                    );
+                    texture_positions.push(texture_position);
+                }
+                Some(&"f") => {
+                    let mut face_corners = vec!();
+                    for i in 1..parts.len() {
+                        let indices: Vec<&str> = parts[i].split('/').collect();
+                        let position_index: usize = indices[0].parse()?;
+                        let texture_index: usize = indices.get(1).unwrap_or(&"0").parse().unwrap_or(0);
+                        let normal_index: usize = indices.get(2).unwrap_or(&"0").parse().unwrap_or(0);
+
+                        let position = positions[position_index - 1];
+                        let normal = if normal_index > 0 { normals[normal_index - 1] } else { Vector3D::origin() };
+                        let texture_position = if texture_index > 0 { texture_positions[texture_index - 1] } else { Vector2D::origin() };
+
+                        face_corners.push(TriangleCorner::new(position, normal, texture_position));
+                    }
+                    if face_corners.len() == 3 {
+                        faces.push(Triangle::new(face_corners, "default_texture")?);
+                    } else if face_corners.len() == 4 {
+                        faces.push(Triangle::new(vec![face_corners[0].clone(), face_corners[1].clone(), face_corners[2].clone()], "default_texture")?);
+                        faces.push(Triangle::new(vec![face_corners[0].clone(), face_corners[2].clone(), face_corners[3].clone()], "default_texture")?);
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        Ok(Model::new(faces, "default_texture".to_string()))
     }
 
     pub fn flatten(self) -> (Vec<TriangleCorner>, Vec<u32>) {
@@ -558,6 +620,12 @@ impl <'a> Model<'a> {
                 corner.position = corner.position + displacement;
             }
         }
+    }
+
+    pub fn combine(self, model2: Model<'a>) -> Model<'a> {
+        let mut combined_faces = self.faces.clone();
+        combined_faces.extend(model2.faces.clone());
+        Model::new(combined_faces, "combined_texture".to_string())
     }
 }
 
@@ -589,5 +657,16 @@ impl <'a> Object<'a> {
         }
 
         (face_output, index_output)
+    }
+
+    pub fn into_model(self) -> Model<'a> {
+        let mut faces = vec!();
+
+        for (mut model, model_position) in self.parts {
+            model.displace(model_position + self.position);
+            faces.append(&mut model.faces);
+        }
+
+        Model::new(faces, "default_texture".to_string())
     }
 }

@@ -19,7 +19,7 @@ use std::f64::consts::PI;
 pub async fn gpu_render_shader<'a>(input_value: Vec<Triangle<'a>>, resolution_x: u32, resolution_y: u32, recources: &RenderRecources, camera: Camera) -> wgpu::Buffer {
 
     let flat_input: (Vec<TriangleCorner>, Vec<u32>) = Triangle::flatten(input_value);
-    println!("flattend render input: {:?}", flat_input);
+    // println!("flattend render input: {:?}", flat_input);
 
     let device = &recources.device;
     let queue = &recources.queue;

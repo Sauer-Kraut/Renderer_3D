@@ -3,6 +3,8 @@ mod gpu_instructions;
 mod calc_structs;
 mod server_communication;
 mod render_lib;
+mod utility;
+use utility::*;
 use server_communication::*;
 use gpu_instructions::*;
 // use lib::*;
@@ -16,6 +18,7 @@ use actix_web::http;
 use wgpu::{Color as GPUColor, RenderPipeline};
 use core::panic;
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::rc::Rc;
 use std::thread::{self};
 use std::sync::mpsc;
@@ -29,9 +32,9 @@ use bytemuck;
 use wgpu::util::DeviceExt;
 use flume;
 use tokio;
-use std::sync::{Arc};
-use tokio::sync::RwLock;
+use tokio::sync::{Mutex, RwLock};
 use rand::Rng;
+use std::sync::{Arc};
 
 
 
@@ -76,9 +79,6 @@ async fn pull_request(info: web::Json<PullReqeustRecvPackage>, data: web::Data<A
 
     let resolution_fit: (u16, u16) = ((resolution.0 - resolution.0 % 64) as u16, (resolution.1 - resolution.1 % 64) as u16);
     println!("using resolution: {:?}", resolution_fit);
-
-    println!("startig async thread");
-    tokio::task::spawn(async move {
 
         println!("async thread has begun");
 
@@ -195,12 +195,20 @@ async fn pull_request(info: web::Json<PullReqeustRecvPackage>, data: web::Data<A
         // }
         println!("matrix:  {:?}", matrix.matrix);
 
-        let mut model = Model::import_obj("static/assets/models/Cylinder/Cylinder.obj").unwrap();
-        for face in model.faces.iter_mut() {
-            for corner in face.corners.iter_mut() {
-                corner.position = Vector3D::new(corner.position.x * 3.0, corner.position.y * 3.0, corner.position.z * 0.1);
-            }
-        }
+        let timestamp = (info.timescale * 100.0) as i32;
+
+        println!("going to start awaiting lock");
+        let locked_demonstrations = data.models.read().await;
+        println!("got lock :3");
+
+        let model = locked_demonstrations.demonstartions.get(&info.model).unwrap().get(&timestamp).unwrap();
+        
+
+        // for face in model.faces.iter_mut() {
+        //     for corner in face.corners.iter_mut() {
+        //         corner.position = Vector3D::new(corner.position.x, corner.position.y, corner.position.z * 0.1);
+        //     }
+        // }
 
 
         println!("going to start awaiting lock");
@@ -215,11 +223,12 @@ async fn pull_request(info: web::Json<PullReqeustRecvPackage>, data: web::Data<A
         // Perform GPU rendering
         println!("starting to render");
         let shader_result = gpu_instructions::gpu_render_shader(
-            model.faces,
+            model,
             resolution_fit.0 as u32,
             resolution_fit.1 as u32,
             renderer_recources,
-            camera
+            camera,
+            true
         ).await;
         println!("finished rendering");
 
@@ -257,7 +266,7 @@ async fn pull_request(info: web::Json<PullReqeustRecvPackage>, data: web::Data<A
         }
 
         // process::exit(0);
-    }).await.unwrap();
+
     println!("arrived behind async thread");
     // println!("trying to receive");
     let error = match error_receiver.try_recv(){
@@ -301,7 +310,74 @@ async fn main() -> std::io::Result<()> {
 
     let compute_recources = Arc::new(RwLock::new(create_grouping_shader_recources(&adapter).await));
 
+    let mut demonstrations = HashMap::new();
 
+    let mut demonstration_normal_map = HashMap::new();
+
+    let mov_fn: Arc<Mutex<dyn Fn(Model<'static>, Vector3D, f32) -> (Model<'static>, Vector3D) + 'static>> = 
+            Arc::new(Mutex::new(move |model: Model<'static>, starting_position: Vector3D, time_stamp: f32| {
+                return (
+                    model, 
+                    starting_position + Vector3D::new(1.0, 0.0, 0.0) * time_stamp * 0.5,
+                );
+    }));
+    
+    let noraml_config = WaveSourceConfig {
+        wave_speead: 1.0,
+        frequency: 12.0,
+        source_start: Vector3D::origin(),
+        mov_fn,
+        source_size: 0.03,
+    };
+
+    for i in 0..30 {
+        println!("calculating normal model {} out of 100...", i);
+        let time_stamp = i as f32 / 100.0;
+
+        demonstration_normal_map.insert(
+            i,
+            generate_wave_source(noraml_config.clone()).await.unwrap().generate_object(time_stamp).await.into_model().flatten()
+        );
+    }
+
+    demonstrations.insert("normal".to_string(), demonstration_normal_map);
+
+
+    let mut demonstration_normal_map = HashMap::new();
+
+    let mov_fn: Arc<Mutex<dyn Fn(Model<'static>, Vector3D, f32) -> (Model<'static>, Vector3D) + 'static>> = 
+            Arc::new(Mutex::new(move |model: Model<'static>, starting_position: Vector3D, time_stamp: f32| {
+                return (
+                    model, 
+                    starting_position + Vector3D::new(1.0, 0.0, 0.0) * time_stamp * 1.0,
+                );
+    }));
+    
+    let noraml_config = WaveSourceConfig {
+        wave_speead: 1.0,
+        frequency: 12.0,
+        source_start: Vector3D::origin(),
+        mov_fn,
+        source_size: 0.03,
+    };
+
+    for i in 0..50 {
+        println!("calculating sound-barrier model {} out of 100...", i);
+        let time_stamp = i as f32 / 100.0;
+
+        demonstration_normal_map.insert(
+            i,
+            generate_wave_source(noraml_config.clone()).await.unwrap().generate_object(time_stamp).await.into_model().flatten()
+        );
+    }
+
+    demonstrations.insert("sound-barrier".to_string(), demonstration_normal_map);
+
+    let models = Arc::new(RwLock::new(Demonstrations {
+        demonstartions: demonstrations
+    }));
+
+    println!("starting server");
 
     HttpServer::new(move || {
         App::new()
@@ -318,7 +394,8 @@ async fn main() -> std::io::Result<()> {
                 .max_age(3600))
             .app_data(web::Data::new(AppState {
                 render_recources: render_recources.clone(),
-                compute_recources: compute_recources.clone()
+                compute_recources: compute_recources.clone(),
+                models: models.clone()
             }))
             .service(Files::new("/static", "./static").show_files_listing())
             .service(web::resource("/").to(index))
@@ -350,8 +427,14 @@ async fn main() -> std::io::Result<()> {
 
 
 
+struct Demonstrations {
+    demonstartions: HashMap<String, HashMap<i32,(Vec<TriangleCorner>, Vec<u32>)>>
+}
+
+
 
 struct AppState {
     render_recources: Arc<RwLock<RenderRecources>>,
-    compute_recources: Arc<RwLock<ComputeGroupingRecources>>
+    compute_recources: Arc<RwLock<ComputeGroupingRecources>>,
+    models: Arc<RwLock<Demonstrations>>
 }

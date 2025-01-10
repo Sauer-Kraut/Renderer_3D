@@ -16,10 +16,7 @@ use std::f64::consts::PI;
 
 
 
-pub async fn gpu_render_shader<'a>(input_value: Vec<Triangle<'a>>, resolution_x: u32, resolution_y: u32, recources: &RenderRecources, camera: Camera) -> wgpu::Buffer {
-
-    let flat_input: (Vec<TriangleCorner>, Vec<u32>) = Triangle::flatten(input_value);
-    // println!("flattend render input: {:?}", flat_input);
+pub async fn gpu_render_shader<'a>(flat_input: &(Vec<TriangleCorner>, Vec<u32>), resolution_x: u32, resolution_y: u32, recources: &RenderRecources, camera: Camera, outlines: bool) -> wgpu::Buffer {
 
     let device = &recources.device;
     let queue = &recources.queue;
@@ -146,8 +143,10 @@ pub async fn gpu_render_shader<'a>(input_value: Vec<Triangle<'a>>, resolution_x:
         command.set_vertex_buffer(0, vertex_buffer.slice(..));
         command.set_index_buffer(index_buffer.slice(..), wgpu::IndexFormat::Uint32);
         command.draw_indexed(0..(flat_input.1.len() as u32), 0, 0..1);
-        command.set_pipeline(&outline_pipeline);
-        command.draw_indexed(0..(flat_input.1.len() as u32), 0, 0..1);
+        if outlines {
+            command.set_pipeline(&outline_pipeline);
+            command.draw_indexed(0..(flat_input.1.len() as u32), 0, 0..1);
+        }
     }
 
     encoder.copy_texture_to_buffer(
@@ -890,6 +889,13 @@ pub fn create_transformation_matrix(camera: Camera) -> Mat4 {
         [0.0, f, 0.0, 0.0],
         [0.0, 0.0, zfar / (zfar - znear), -(znear * zfar) / (zfar - znear)],
         [0.0, 0.0, 1.0, 0.0]
+    ]);
+
+    let projection_matrix = Mat4::new([
+        [1.0, 0.0, 0.0, 0.0],
+        [0.0, 1.0, 0.0, 0.0],
+        [0.0, 0.0, 1.0, 0.0],
+        [0.0, 0.0, 0.0, -1.0]
     ]);
 
 

@@ -22,6 +22,8 @@ pub struct PullReqeustRecvPackage {
     pub camera_position: Vector3D,
     pub focus_point: Vector3D,
     pub fov: f32,
+    pub timescale: f32,
+    pub model: String
 }
 
 #[derive(Debug, Deserialize, Serialize)]

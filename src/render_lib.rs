@@ -2,7 +2,9 @@ use crate::calc_structs::*;
 use std::cell::RefCell;
 use std::io::BufRead;
 use std::rc::Rc;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+
+use tokio::sync::Mutex;
 
 
 
@@ -480,8 +482,8 @@ pub fn create_sphere<'a>(position: Vector3D, size: u32, x_layers: u32, y_layers:
 
 
 
-pub struct DynObject<'a> {
-    parts: Vec<(Model<'a>, Vector3D, Arc<Mutex<dyn Fn(Model, Vector3D, f32) -> (Model, Vector3D)>>)>,   // Vector 3D represents the Model position relativ to the Object origin
+pub struct DynObject {
+    parts: Vec<(Model<'static>, Vector3D, Arc<Mutex<dyn Fn(Model<'static>, Vector3D, f32) -> (Model<'static>, Vector3D)>>)>,   // Vector 3D represents the Model position relativ to the Object origin
     position: Vector3D                                                                            // Vector 3D represents the Object origin
 }
 
@@ -500,22 +502,22 @@ pub struct Model<'a> {
 }
 
 
-impl <'a> DynObject<'a> {
+impl <'a> DynObject {
 
-    pub fn new(parts: Vec<(Model<'a>, Vector3D, Arc<Mutex<dyn Fn(Model, Vector3D, f32) -> (Model, Vector3D)>>)>, position: Vector3D) -> DynObject<'a> {
+    pub fn new(parts: Vec<(Model<'static>, Vector3D, Arc<Mutex<dyn Fn(Model<'static>, Vector3D, f32) -> (Model<'static>, Vector3D)>>)>, position: Vector3D) -> DynObject {
         DynObject { 
             parts, 
             position 
         }
     }
 
-    pub fn generate_object(&self, t: f32) -> Object<'a> {
+    pub async fn generate_object(&self, t: f32) -> Object<'a> {
 
         let mut transformed_models = vec!();
 
         for (model, placement, tranformation_fn) in self.parts.iter() {
 
-            let locked_transformation_fn = tranformation_fn.lock().unwrap();
+            let locked_transformation_fn = tranformation_fn.lock().await;
             let transformation = locked_transformation_fn(model.clone(), *placement, t);
 
             transformed_models.push(transformation);
@@ -618,6 +620,17 @@ impl <'a> Model<'a> {
             for corner in face.corners.iter_mut() {
 
                 corner.position = corner.position + displacement;
+            }
+        }
+    }
+
+    pub fn scale(&mut self, factor: f32) {
+
+        for face in self.faces.iter_mut() {
+
+            for corner in face.corners.iter_mut() {
+
+                corner.position = corner.position * factor;
             }
         }
     }

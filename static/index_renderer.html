@@ -19,6 +19,7 @@
             position: fixed;
             /* overflow: hidden; */
             background-color: whitesmoke;
+            color: #f9f9f9;
         }
 
         .canvas-container {
@@ -40,9 +41,11 @@
         }
 
         #pixelCanvas {
-            position: relative;
-            left: calc(max(300px, 20%) / 2 + (50% - 256px));
-            top: calc(max((50% - 256px), 0px));
+            position: absolute;
+            left: calc(50vw - 256px);
+            top: calc(50vh - 256px);;
+            width: 512px;
+            height: 512px;
         }
 
 
@@ -55,7 +58,7 @@
             min-width: 300px;
             z-index: 4;
             height: 100%;
-            width: 20%;
+            width: calc(max(15vw, 100px));
         }
 
         #vector-buttons {
@@ -84,9 +87,11 @@
             display: inline-block;
             width: 92%;
             height: fit-content;
-            border: solid red;
             padding: 5px;
-            border-style: dashed;
+            border-style: inset;
+            padding-top: 20px;
+            padding-bottom: 75vh;
+            border-color: rgb(219, 219, 219);
         }
 
         .Slider{
@@ -113,7 +118,7 @@
 
         .cosmetic-div {
             position: absolute;
-            background-color: aliceblue;
+            background-color: rgb(90, 90, 90);
             min-width: 300px;
         }
 
@@ -121,20 +126,20 @@
             position: absolute;
             top: -1%;
             left: 0%;
-            width: 20%;
+            width: calc(max(15vw, 100px));
             height: 306%;
             z-index: 3;
-            border: solid black;
+            border: solid rgb(184, 177, 177);
         }
 
         #vector-small-border {
             position: absolute;
             top: max(40px, 5%);
             left: 0%;
-            width: 20%;
+            width: calc(max(15vw, 100px));
             height: 300%;
             z-index: 3;
-            border: solid black;
+            border: solid rgb(184, 177, 177);
         }
 
 
@@ -142,9 +147,11 @@
         #canvas-div {
             top: 0%;
             position: absolute;
-            left: 0;
-            width: inherit;
+            right: 0;
+            width: calc(100vw - max(15vw, 100px));
             height: inherit;
+            align-items: center;
+            justify-content: center;
         }        
 
         #Resultvectors {
@@ -176,7 +183,7 @@
             font: bolder;
         }
 
-        #AngleSlider {
+        #Slider {
             text-align: center;
         }
 
@@ -237,6 +244,16 @@
             margin-bottom: 10px;
         }
 
+        .selectorDiv {
+            align-items: start;
+            margin-top: 20px;
+        }
+
+        #ModelSelector {
+            margin-left: 20px;
+            left: 0px;
+        }
+
     </style>
 </head>
 <body id="body">
@@ -261,8 +278,8 @@
             </div>
             <div id="vectors">
                 <div id="vector-buttons">
-                    <button onclick="addVector()">Add Vector</button>
-                    <button onclick="removeVector()">Remove Vector</button>
+                    <!-- <button onclick="addVector()">Add Vector</button>
+                    <button onclick="removeVector()">Remove Vector</button> -->
                 </div>
 
                 <div id="vectorsContainer">
@@ -284,7 +301,7 @@
                 <label id="Error-Message"></label>
             </div>
             <div id="canvas-div">
-                <canvas id="pixelCanvas" width="1600" height="1600"></canvas>
+                <canvas id="pixelCanvas"></canvas>
             </div>
         </div>
 
@@ -315,7 +332,7 @@
 
         <br>
 
-        <div id="AngleSlider">
+        <div id="Slider">
             <label id="angle-slider-label">Selected Angle: 0°</label>
             <br>
             <input id="angle-slider" type="range" min="1" max="360" step="0" value="0" oninput="updateSliderText('angle-slider', 'angle-slider-label', 'Selected Angle:'), sendPutRequest()">
@@ -334,6 +351,7 @@
         const colorOptions = ["green", "red", "blue", "purple"]
         var renderLists = [];
         var pendingRequest = false;
+        var play = false;
 
         function forgetRequest() {
             pendingRequest = false;
@@ -359,79 +377,27 @@
             canvas.height = `${resolution[1]}`
         }
 
-        function readRotationMatrix(number) {
-            const lineX = [document.getElementById(`lineX1_${number}`).value || '1.0', document.getElementById(`lineX2_${number}`).value || '0.0', document.getElementById(`lineX3_${number}`).value || '0.0'];
-            const lineY = [document.getElementById(`lineY1_${number}`).value || '0.0', document.getElementById(`lineY2_${number}`).value || '1.0', document.getElementById(`lineY3_${number}`).value || '0.0'];
-            const lineZ = [document.getElementById(`lineZ1_${number}`).value || '0.0', document.getElementById(`lineZ2_${number}`).value || '0.0', document.getElementById(`lineZ3_${number}`).value || '1.0'];
-
-            const result = [lineX, lineY, lineZ];
-
-            return result;
-        }
-
-        function createRotationMatrix(number) {
-            var matrixDiv = document.createElement("div");
-            matrixDiv.id = "InputMatrix_" + number;
-            matrixDiv.className = "InputMatrix"
-
-            var label = document.createElement("label");
-            label.id = "inputMatrixLabel";
-            label.textContent = "Rotation Matrix:";
-
-            matrixDiv.appendChild(label);
-            matrixDiv.appendChild(document.createElement("br"));
-
-            // Create input elements for each line and element
-            var lines = ['X', 'Y', 'Z'];
-            for (var i = 0; i < lines.length; i++) {
-                for (var j = 1; j <= 3; j++) {
-                var input = document.createElement("input");
-                input.type = "text";
-                input.id = "line" + lines[i] + j + "_" + number;
-                input.placeholder = "Line " + lines[i] + ", Element " + j;
-                input.className = "matrix-input";
-                input.value = 0;
-
-                if (i == j - 1) {
-                    input.value = 1;
-                }
-
-                if (i == 0 && j == 1) {
-                    input.value = "sin()";
-                }
-
-                matrixDiv.appendChild(input);
-                }
-
-                matrixDiv.appendChild(document.createElement("br"));
-            }
-
-            matrixDiv.appendChild(document.createElement("br"));
-
-            return matrixDiv;
-        }
-
-        function createAngleSlider(number) {
+        function createSlider(number) {
             var sliderDiv = document.createElement("div");
-            sliderDiv.id = `AngleSliderDiv_${number}`;
+            sliderDiv.id = `SliderDiv_${number}`;
             sliderDiv.className = "SliderDiv";
 
             var label = document.createElement("label");
-            label.id = `AngleSliderLabel_${number}`;
-            label.textContent = "Selected Angle: 0°";
+            label.id = `SliderLabel_${number}`;
+            label.textContent = "Timescale: 0.0";
 
             var slider = document.createElement("input");
             slider.className = "Slider"
             slider.type = "range";
-            slider.id = `AngleSlider_${number}`;
-            slider.min = "0";
-            slider.max = "360";
-            slider.step = "1";
+            slider.id = `Slider_${number}`;
+            slider.min = "0.0";
+            slider.max = "1.0";
+            slider.step = "0.01";
             slider.width = "120px";
             slider.value = 0;
             slider.oninput = function() {
-                updateSliderText(`AngleSlider_${number}`, `AngleSliderLabel_${number}`, 'Selected Angle:');
-                // manipulateMatrixInputTextBrackets(document.getElementById(`AngleSlider_${number}`).value || "0", `${number}`)
+                updateSliderText(`Slider_${number}`, `SliderLabel_${number}`, 'Timescale:');
+                // manipulateMatrixInputTextBrackets(document.getElementById(`Slider_${number}`).value || "0", `${number}`)
                 sendPutRequest(number);
             };
 
@@ -442,17 +408,24 @@
             return sliderDiv;
         }
 
-        function increaseAngleSlider(number) {
-            console.log("increasing angle slider value")
-            var sliderDiv = document.getElementById(`AngleSlider_${number}`);
-            sliderDiv.value = sliderDiv.value + 1;
+        function IncrementSlider() {
+            const id =`Slider_${-1}`; 
+            const change = 0.01;
+            console.log("increasing slider value")
+            var sliderDiv = document.getElementById(`${id}`);
+            const newValue = parseFloat(sliderDiv.value) + change;
+
+            if (newValue < 0.95 && newValue > 0.0) {
+                sliderDiv.value = newValue;
+                sendPutRequest()
+            }
         }
 
         function updateSliderText(sliderId, LabelId, LabelText) {
             const slider = document.getElementById(sliderId);
             const sliderLabel = document.getElementById(LabelId);
             
-            sliderLabel.innerText = `${LabelText} ${slider.value}°`
+            sliderLabel.innerText = `${LabelText} ${slider.value}`
         }
 
         function translateColor(colorText) {
@@ -503,44 +476,11 @@
 
                 const lineBreak = document.createElement("br");
 
-                // const labelX = document.createElement("label");
-                // labelX.textContent = `X`;
-
-                // const inputX = document.createElement("input");
-                // inputX.type = "text";
-                // inputX.id = `vector${vectorCounter}X`;
-                // inputX.placeholder = "Enter X value";
-                // inputX.value = Math.round(Math.random() * 4) + 1;
-                // inputX.oninput = function() {
-                //     sendPutRequest(currentVectorCounter);
-                // }
-
-                // const labelY = document.createElement("label");
-                // labelY.textContent = "Y";
-
-                // const inputY = document.createElement("input");
-                // inputY.type = "text";
-                // inputY.id = `vector${vectorCounter}Y`;
-                // inputY.placeholder = "Enter Y value";
-                // inputY.value = Math.round(Math.random() * 4) + 1;
-                // inputY.oninput = function() {
-                //     sendPutRequest(currentVectorCounter);
-                // }
-
-                // const labelZ = document.createElement("label");
-                // labelZ.textContent = "Z";
-
-                // const inputZ = document.createElement("input");
-                // inputZ.type = "text";
-                // inputZ.id = `vector${vectorCounter}Z`;
-                // inputZ.placeholder = "Enter Z value";
-                // inputZ.value = Math.round(Math.random() * 4) + 1;
-                // inputZ.oninput = function() {
-                //     sendPutRequest(currentVectorCounter);
-                // }
-
-                slider = createAngleSlider(vectorCounter);
+                slider = createSlider(vectorCounter);
                 slider.top = "70px"
+
+                const options = ["normal", "sound-barrier"];
+                selector = addSelector(options, "ModelSelector");
 
                 // Append elements to the container
                 vectorsContainer.appendChild(vectorDiv);
@@ -554,6 +494,7 @@
                 // vectorDiv.appendChild(inputZ);
                 // vectorDiv.appendChild(createRotationMatrix(vectorCounter));
                 vectorDiv.appendChild(slider);
+                vectorDiv.appendChild(selector);
 
                 vectorCounter++;
                 const topPosition = vectorCounter * 30; // Adjust this value based on your layout
@@ -563,9 +504,6 @@
                 if (colorIndex < 0) {
                     colorIndex = colorOptions.length + colorIndex - 1;
                 }
-
-                vectorDiv.style.border = `solid ${colorOptions[colorIndex]}`
-                vectorDiv.style.borderStyle = "dashed";
 
                 sendPutRequest(vectorCounter - 1);
             }
@@ -583,49 +521,6 @@
             }
         }
 
-
-        function manipulateInputTextBrackets(insertText, elementId) {
-            console.log("trying to change value of field");
-
-            const element = document.getElementById(elementId);
-            const inputText = element.value; 
-            var result = "";
-
-            var inBrackets = false
-            for (var i = 0; i < inputText.length; i++) {
-                if (inBrackets) {
-                    if (inputText[i] === ")" || i === inputText.length - 1) {
-                        result += `${insertText})`
-                        inBrackets = false;
-                    }
-                } else {
-                    if (inputText[i] === "(") {
-                        result += `(`
-                        inBrackets = true;
-                    } else {
-                        result += `${inputText[i]}`
-                    }
-                }
-            }
-
-            element.value = result;
-        }
-
-        function manipulateMatrixInputTextBrackets(insertText, matrixNumber) {
-            console.log("trying to change Matrix values");
-            
-            const lineX = [document.getElementById(`lineX1_${matrixNumber}`), document.getElementById(`lineX2_${matrixNumber}`), document.getElementById(`lineX3_${matrixNumber}`)];
-            const lineY = [document.getElementById(`lineY1_${matrixNumber}`), document.getElementById(`lineY2_${matrixNumber}`), document.getElementById(`lineY3_${matrixNumber}`)];
-            const lineZ = [document.getElementById(`lineZ1_${matrixNumber}`), document.getElementById(`lineZ2_${matrixNumber}`), document.getElementById(`lineZ3_${matrixNumber}`)];
-
-            for (var i = 0; i < 3; i++) {
-                console.log("iterating");
-                manipulateInputTextBrackets(`${insertText}°`, lineX[i].id);
-                manipulateInputTextBrackets(`${insertText}°`, lineY[i].id);
-                manipulateInputTextBrackets(`${insertText}°`, lineZ[i].id);
-            }
-        }
-
         class RenderedVector {
             constructor(layer, render, number) {
                 this.layer = layer;
@@ -636,7 +531,35 @@
 
 
 
+        function addSelector(options, selectorId) {
+            const selectorDiv = document.createElement("div");
+            selectorDiv.className = "selectorDiv";
 
+            const label = document.createElement("label");
+            label.textContent = "Select Option:";
+
+            const selector = document.createElement("select");
+            selector.id = selectorId;
+
+            options.forEach(option => {
+                const optionElement = document.createElement("option");
+                optionElement.value = option;
+                optionElement.textContent = option;
+                selector.appendChild(optionElement);
+            });
+
+            selectorDiv.appendChild(label);
+            selectorDiv.appendChild(selector);
+
+            return selectorDiv;
+        }
+
+        function getSelectedValue(selectorId) {
+            const selector = document.getElementById(selectorId);
+            return selector.value;
+        }
+
+        
 
         async function sendPutRequest(number) {
 
@@ -692,13 +615,13 @@
 
             //     matrixArray = readRotationMatrix(number);
                 
-            theta = parseFloat(document.getElementById(`AngleSlider_${-1}`).value || "0") / 180 * 3.141;
+            theta = parseFloat("0") / 180 * 3.141;
             angels.push(theta);
 
-            theta = parseFloat(document.getElementById(`AngleSlider_${0}`).value || "0") / 180 * 3.141;
+            theta = parseFloat("0") / 180 * 3.141;
             angels.push(theta);
 
-            theta = parseFloat(document.getElementById(`AngleSlider_${1}`).value || "0") / 180 * 3.141;
+            theta = parseFloat("0") / 180 * 3.141;
             angels.push(theta);
 
             //     var colorIndex = (number + 1) % colorOptions.length;
@@ -717,6 +640,11 @@
             matrixes.push(matrix);
 
             angels.push(theta);
+
+
+            let timescale = parseFloat(document.getElementById(`Slider_${-1}`).value || "0.0")
+
+            let model = getSelectedValue("ModelSelector");
                 
             
             const data = {
@@ -727,7 +655,9 @@
                 theta: angels,
                 camera_position: cameraPosition,
                 focus_point: focusPoint,
-                fov: 80.0
+                fov: 80.0,
+                timescale,
+                model
             };
             try {
                 console.log(`sending data: ${JSON.stringify(data)}`)
@@ -841,12 +771,10 @@
         }
         window.scrollTo(0, 0);
         setCanvasSize("pixelCanvas", determineCanvasResolution());
-        setInterval(setCanvasSize("pixelCanvas", determineCanvasResolution()), 100);
-        setInterval(forgetRequest(), 1000);
-        addVector("Rotation X");
-        addVector("Rotation Y");
-        addVector("Rotation Z");
-
+        // setInterval(setCanvasSize("pixelCanvas", determineCanvasResolution()), 100);
+        // setInterval(forgetRequest(), 1000);
+        addVector("Config");
+        setInterval(IncrementSlider, 70);
         
 
         //sendPutRequest("X");
@@ -854,11 +782,11 @@
         //sendPutRequest("Z");
         sendPutRequest(-1);
 
-        increaseAngleSlider(-1)
+        increaseSlider(-1)
 
         // If you want to automatically call the function every second
         //setInterval(async () => {await sendPutRequest(-1)}, 50);
-        //setInterval(increaseAngleSlider(-1), 100);
+        //setInterval(increaseSlider(-1), 100);
 
     </script>
 </body>

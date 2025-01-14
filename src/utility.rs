@@ -24,16 +24,23 @@ pub async fn generate_wave_source(config: WaveSourceConfig) -> Result<DynObject,
     let source_entry = (
         source.clone(),
         config.source_start,
-        config.mov_fn.clone()
+        config.src_mov_fn.clone()
+    );
+
+    let obs_entry = (
+        source.clone(),
+        config.observer_start,
+        config.obs_mov_fn.clone()
     );
 
     entrys.push(source_entry);
+    entrys.push(obs_entry);
 
     for wavefront_index in 1..(occurences +1) {
 
         let start_duration = wavefront_index as f32 / config.frequency;
 
-        let mov = config.mov_fn.clone();
+        let mov = config.src_mov_fn.clone();
         let (_new_model, start_position) = mov.lock().await(source.clone(), config.source_start, start_duration);
 
         let dev_fn: Arc<Mutex<dyn Fn(Model<'static>, Vector3D, f32) -> (Model<'static>, Vector3D) + 'static>> = 
@@ -71,6 +78,8 @@ pub struct WaveSourceConfig {
     pub wave_speead: f32, 
     pub frequency: f32,
     pub source_start: Vector3D, 
-    pub mov_fn: Arc<Mutex<dyn Fn(Model<'static>, Vector3D, f32) -> (Model<'static>, Vector3D)>>, 
+    pub observer_start: Vector3D, 
+    pub src_mov_fn: Arc<Mutex<dyn Fn(Model<'static>, Vector3D, f32) -> (Model<'static>, Vector3D)>>,
+    pub obs_mov_fn: Arc<Mutex<dyn Fn(Model<'static>, Vector3D, f32) -> (Model<'static>, Vector3D)>>,
     pub source_size: f32
 }

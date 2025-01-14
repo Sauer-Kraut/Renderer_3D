@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>3D Rotation Renderer</title>
+    <title>The Doppler effect</title>
     <link rel="icon" href="static\assets\icons\webapp icon.png" type="image/png">
     <style>
         
@@ -42,10 +42,10 @@
 
         #pixelCanvas {
             position: absolute;
-            left: calc(50vw - 256px);
-            top: calc(50vh - 256px);;
-            width: 512px;
-            height: 512px;
+            left: calc(50vw - (100vh) / 2);
+            top: calc(50vh - (100vh) / 2);;
+            width: 100vh;
+            height: 100vh;
         }
 
 
@@ -254,6 +254,13 @@
             left: 0px;
         }
 
+        .handout {
+            color: rgb(149, 198, 255);
+            text-decoration: none;
+            margin: 3rem;
+            margin-left: 1rem;
+        }
+
     </style>
 </head>
 <body id="body">
@@ -278,12 +285,12 @@
             </div>
             <div id="vectors">
                 <div id="vector-buttons">
-                    <!-- <button onclick="addVector()">Add Vector</button>
-                    <button onclick="removeVector()">Remove Vector</button> -->
+                    <button onclick="togglePlay()">Play</button>
                 </div>
 
                 <div id="vectorsContainer">
                     <!-- Vector fields will be added here dynamically -->
+                    <a class="handout" href="https://drive.google.com/file/d/1H_YxxZf_e2oossALDehiBT9-DZH8esPG/view?usp=sharing" target="_other">Handout</a>
                 </div>
             </div>
             <!-- <div class="upper-left-corner">
@@ -352,6 +359,11 @@
         var renderLists = [];
         var pendingRequest = false;
         var play = false;
+        var speed = 0.01;
+
+        function togglePlay() {
+            play = !play;
+        }
 
         function forgetRequest() {
             pendingRequest = false;
@@ -368,7 +380,8 @@
 
         function determineCanvasResolution() {
             const displayResolution = getDisplayResolution();
-            return [Math.min(Math.round(displayResolution[0] - sideWidth), 512), Math.min(Math.round(displayResolution[1]), 512)];
+            let resolution = Math.min(Math.round(displayResolution[0]) - Math.round(displayResolution[0]) % 128.0, 1028)
+            return [resolution, resolution];
         }
 
         function setCanvasSize(canvasId, resolution) {
@@ -410,13 +423,15 @@
 
         function IncrementSlider() {
             const id =`Slider_${-1}`; 
-            const change = 0.01;
+            const laber_id = `SliderLabel_${-1}`;
+            const change = speed;
             console.log("increasing slider value")
             var sliderDiv = document.getElementById(`${id}`);
             const newValue = parseFloat(sliderDiv.value) + change;
 
-            if (newValue < 0.95 && newValue > 0.0) {
+            if (newValue < 0.95 && newValue > 0.0 && play) {
                 sliderDiv.value = newValue;
+                updateSliderText(id, laber_id, 'Timescale:')
                 sendPutRequest()
             }
         }
@@ -479,7 +494,7 @@
                 slider = createSlider(vectorCounter);
                 slider.top = "70px"
 
-                const options = ["normal", "sound-barrier"];
+                const options = ["standard", "straight", "sound-barrier", "observer"];
                 selector = addSelector(options, "ModelSelector");
 
                 // Append elements to the container
@@ -568,7 +583,7 @@
                 // pendingRequest = true;
                 
             
-            const url = 'https://therotationrenderer.mywire.org/api/pull-request';
+            const url = 'https://dopplerphysics.mywire.org/api/pull-request';
             const title = "Client calculation Request";
             const description = "Package containing data ment to be calcualted and renderd by the server";
 
@@ -774,7 +789,7 @@
         // setInterval(setCanvasSize("pixelCanvas", determineCanvasResolution()), 100);
         // setInterval(forgetRequest(), 1000);
         addVector("Config");
-        setInterval(IncrementSlider, 70);
+        setInterval(IncrementSlider, 50);
         
 
         //sendPutRequest("X");

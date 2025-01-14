@@ -1,5 +1,6 @@
 use crate::calc_structs::*;
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::io::BufRead;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -528,6 +529,38 @@ impl <'a> DynObject {
             position: self.position,
         }
     } 
+
+    pub async fn map(self) ->  HashMap<u32, (Vec<TriangleCorner>, Vec<u32>)>{
+        let mut map: HashMap<u32, (Vec<TriangleCorner>, Vec<u32>)> = HashMap::new();
+
+        for i in 0..100 {
+            println!("calculating sound-barrier model {} out of {}...", i, 100);
+            let time_stamp = i as f32 / 100.0;
+    
+            map.insert(
+                i,
+                self.generate_object(time_stamp).await.into_model().flatten()
+            );
+        }
+
+        map
+    }
+
+    pub async fn map_dev(self, steps: u32) ->  HashMap<u32, (Vec<TriangleCorner>, Vec<u32>)>{
+        let mut map: HashMap<u32, (Vec<TriangleCorner>, Vec<u32>)> = HashMap::new();
+
+        for i in 0..steps {
+            println!("USING MAP_DEV(): calculating sound-barrier model {} out of {}...", i, steps);
+            let time_stamp = i as f32 / 100.0;
+    
+            map.insert(
+                i,
+                self.generate_object(time_stamp).await.into_model().flatten()
+            );
+        }
+
+        map
+    }
 }
 
 

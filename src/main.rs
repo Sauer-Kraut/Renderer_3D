@@ -102,7 +102,7 @@ async fn pull_request(info: web::Json<PullReqeustRecvPackage>, data: web::Data<A
         // println!("\nsettig up screen data");
 
         // let screen_plane = screen.get_plane();
-        // let camera_position = screen_center + (screen_center.clone() - focus_point).normalize() * 4.0;
+        // let camera_position = screen_center + (screen_center.clone() - focus_point).straitize() * 4.0;
 
         // println!("\nstarting to render");
 
@@ -193,9 +193,10 @@ async fn pull_request(info: web::Json<PullReqeustRecvPackage>, data: web::Data<A
         //     // let test_output = matrix * (Vector3D::new(2.0, -1.0, 3.0), 1.0 as f32);
         //     // println!("test output: {:?}", test_output);
         // }
-        println!("matrix:  {:?}", matrix.matrix);
+        
+        // println!("matrix:  {:?}", matrix.matrix);
 
-        let timestamp = (info.timescale * 100.0) as i32;
+        let timestamp = (info.timescale * 100.0) as u32;
 
         println!("going to start awaiting lock");
         let locked_demonstrations = data.models.read().await;
@@ -312,40 +313,71 @@ async fn main() -> std::io::Result<()> {
 
     let mut demonstrations = HashMap::new();
 
-    let mut demonstration_normal_map = HashMap::new();
 
-    let mov_fn: Arc<Mutex<dyn Fn(Model<'static>, Vector3D, f32) -> (Model<'static>, Vector3D) + 'static>> = 
+    let src_mov_fn: Arc<Mutex<dyn Fn(Model<'static>, Vector3D, f32) -> (Model<'static>, Vector3D) + 'static>> = 
+            Arc::new(Mutex::new(move |model: Model<'static>, starting_position: Vector3D, time_stamp: f32| {
+                return (
+                    model, 
+                    starting_position,
+                );
+    }));
+
+    let obs_mov_fn: Arc<Mutex<dyn Fn(Model<'static>, Vector3D, f32) -> (Model<'static>, Vector3D) + 'static>> = 
+            Arc::new(Mutex::new(move |model: Model<'static>, starting_position: Vector3D, time_stamp: f32| {
+                return (
+                    model, 
+                    starting_position,
+                );
+    }));
+    
+    let standard_config = WaveSourceConfig {
+        wave_speead: 2.0,
+        frequency: 6.0, //about 12 is good
+        source_start: Vector3D::origin(),
+        observer_start: Vector3D::new(0.5, 0.0, 0.0),
+        src_mov_fn,
+        obs_mov_fn: obs_mov_fn.clone(),
+        source_size: 0.03,
+    };
+    
+    let demonstration_standard = generate_wave_source(standard_config.clone()).await.unwrap().map().await;
+
+    demonstrations.insert("standard".to_string(), demonstration_standard);
+
+
+    let src_mov_fn: Arc<Mutex<dyn Fn(Model<'static>, Vector3D, f32) -> (Model<'static>, Vector3D) + 'static>> = 
             Arc::new(Mutex::new(move |model: Model<'static>, starting_position: Vector3D, time_stamp: f32| {
                 return (
                     model, 
                     starting_position + Vector3D::new(1.0, 0.0, 0.0) * time_stamp * 0.5,
                 );
     }));
+
+    let obs_mov_fn: Arc<Mutex<dyn Fn(Model<'static>, Vector3D, f32) -> (Model<'static>, Vector3D) + 'static>> = 
+            Arc::new(Mutex::new(move |model: Model<'static>, starting_position: Vector3D, time_stamp: f32| {
+                return (
+                    model, 
+                    starting_position,
+                );
+    }));
     
-    let noraml_config = WaveSourceConfig {
-        wave_speead: 1.0,
-        frequency: 12.0,
+    let straight_config = WaveSourceConfig {
+        wave_speead: 2.0,
+        frequency: 6.0, //about 12 is good
         source_start: Vector3D::origin(),
-        mov_fn,
+        observer_start: Vector3D::new(0.9, 0.0, 0.0),
+        src_mov_fn,
+        obs_mov_fn: obs_mov_fn.clone(),
         source_size: 0.03,
     };
+    
+    let demonstration_straight = generate_wave_source(straight_config.clone()).await.unwrap().map().await;
 
-    for i in 0..30 {
-        println!("calculating normal model {} out of 100...", i);
-        let time_stamp = i as f32 / 100.0;
-
-        demonstration_normal_map.insert(
-            i,
-            generate_wave_source(noraml_config.clone()).await.unwrap().generate_object(time_stamp).await.into_model().flatten()
-        );
-    }
-
-    demonstrations.insert("normal".to_string(), demonstration_normal_map);
+    demonstrations.insert("straight".to_string(), demonstration_straight);
 
 
-    let mut demonstration_normal_map = HashMap::new();
 
-    let mov_fn: Arc<Mutex<dyn Fn(Model<'static>, Vector3D, f32) -> (Model<'static>, Vector3D) + 'static>> = 
+    let src_mov_fn: Arc<Mutex<dyn Fn(Model<'static>, Vector3D, f32) -> (Model<'static>, Vector3D) + 'static>> = 
             Arc::new(Mutex::new(move |model: Model<'static>, starting_position: Vector3D, time_stamp: f32| {
                 return (
                     model, 
@@ -353,25 +385,50 @@ async fn main() -> std::io::Result<()> {
                 );
     }));
     
-    let noraml_config = WaveSourceConfig {
+    let soundabarrier_config = WaveSourceConfig {
         wave_speead: 1.0,
-        frequency: 12.0,
+        frequency: 6.0,
         source_start: Vector3D::origin(),
-        mov_fn,
+        observer_start: Vector3D::new(0.9, 0.0, 0.0),
+        src_mov_fn,
+        obs_mov_fn: obs_mov_fn.clone(),
         source_size: 0.03,
     };
 
-    for i in 0..50 {
-        println!("calculating sound-barrier model {} out of 100...", i);
-        let time_stamp = i as f32 / 100.0;
+    let demonstration_soundabarrier = generate_wave_source(soundabarrier_config.clone()).await.unwrap().map().await;
 
-        demonstration_normal_map.insert(
-            i,
-            generate_wave_source(noraml_config.clone()).await.unwrap().generate_object(time_stamp).await.into_model().flatten()
-        );
-    }
+    demonstrations.insert("sound-barrier".to_string(), demonstration_soundabarrier);
 
-    demonstrations.insert("sound-barrier".to_string(), demonstration_normal_map);
+
+    let src_mov_fn: Arc<Mutex<dyn Fn(Model<'static>, Vector3D, f32) -> (Model<'static>, Vector3D) + 'static>> = 
+            Arc::new(Mutex::new(move |model: Model<'static>, starting_position: Vector3D, time_stamp: f32| {
+                return (
+                    model, 
+                    starting_position,
+                );
+    }));
+
+    let obs_mov_fn: Arc<Mutex<dyn Fn(Model<'static>, Vector3D, f32) -> (Model<'static>, Vector3D) + 'static>> = 
+            Arc::new(Mutex::new(move |model: Model<'static>, starting_position: Vector3D, time_stamp: f32| {
+                return (
+                    model, 
+                    starting_position  + Vector3D::new(1.0, 0.0, 0.0) * time_stamp * -0.5,
+                );
+    }));
+    
+    let observer_config = WaveSourceConfig {
+        wave_speead: 2.0,
+        frequency: 6.0,
+        source_start: Vector3D::origin(),
+        observer_start: Vector3D::new(0.9, 0.0, 0.0),
+        src_mov_fn,
+        obs_mov_fn,
+        source_size: 0.03,
+    };
+
+    let demonstration_soundabarrier = generate_wave_source(observer_config.clone()).await.unwrap().map().await;
+
+    demonstrations.insert("observer".to_string(), demonstration_soundabarrier);
 
     let models = Arc::new(RwLock::new(Demonstrations {
         demonstartions: demonstrations
@@ -382,7 +439,8 @@ async fn main() -> std::io::Result<()> {
     HttpServer::new(move || {
         App::new()
             .wrap(Cors::default()
-                .allowed_origin("https://therotationrenderer.mywire.org") // Update with your frontend's origin
+                .allowed_origin("https://dopplerphysics.mywire.org") // Update with your frontend's origin
+                .allowed_origin("http://localhost:8081")
                 .allowed_methods(vec!["GET", "POST", "PUT", "DELETE"])
                 .allowed_headers(vec![
                     http::header::AUTHORIZATION,
@@ -428,7 +486,7 @@ async fn main() -> std::io::Result<()> {
 
 
 struct Demonstrations {
-    demonstartions: HashMap<String, HashMap<i32,(Vec<TriangleCorner>, Vec<u32>)>>
+    demonstartions: HashMap<String, HashMap<u32,(Vec<TriangleCorner>, Vec<u32>)>>
 }
 
 

@@ -431,7 +431,7 @@ pub async fn gpu_grouping_shader(input_value: wgpu::Buffer, resolution_x: u32, r
     // needs adjusment for different inputs
     let output_length_size = size_of_val(&empty_output_length[..]) as wgpu::BufferAddress;
     let input_size = size_of_val(&input_sized_value[..]) as wgpu::BufferAddress;
-    println!("Input Size: {:?}", input_size);
+    // println!("Input Size: {:?}", input_size);
 
     // Buffer to get data back from GPU
 
